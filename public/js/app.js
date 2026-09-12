@@ -5,6 +5,9 @@ const state = {
   view: "landing",
   tipo: null,
 
+  publicConfig: { clinicaNome: "Atendimento Veterinário em Domicílio", clinicaSlogan: "Cuidado com pets, na porta de casa", logoPath: null },
+  vetConfig: null,
+
   cliente: null,
   pets: [],
   meusAgendamentos: [],
@@ -22,7 +25,6 @@ const state = {
   vetBusca: "",
   vetExpandidoCliente: null,
   vetShowNovoCliente: false,
-  vetShowSenha: false,
   vetCarteiraCpf: null,
   vetCarteiraPetId: null,
   vetAddVacinaAberto: null,
@@ -71,6 +73,28 @@ function enderecoTexto(end) {
   return partes.join(", ");
 }
 function mapsUrl(end) { return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoTexto(end))}`; }
+
+function googleCalendarUrl(ag) {
+  const inicio = new Date(`${ag.data}T${ag.horario}:00-03:00`);
+  const fim = new Date(inicio.getTime() + 60 * 60 * 1000);
+  const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Visita veterinária - ${ag.petNome}`,
+    dates: `${fmt(inicio)}/${fmt(fim)}`,
+    details: `${ag.motivo || ""}${ag.motivo ? " — " : ""}Atendimento a domicílio.`,
+    location: enderecoTexto(ag.endereco),
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function fileIconFor(mime) {
+  if (!mime) return "📎";
+  if (mime.startsWith("image/")) return "🖼️";
+  if (mime === "application/pdf") return "📄";
+  if (mime.includes("word")) return "📝";
+  return "📎";
+}
 function qs(id) { return document.getElementById(id); }
 function val(id) { return (qs(id)?.value || "").trim(); }
 
@@ -94,6 +118,27 @@ function showToast(msg, isErr) {
   showToast._t = setTimeout(() => { root.innerHTML = ""; }, 4000);
 }
 
+function showLightbox(src, tipo) {
+  const root = qs("lightbox-root");
+  if (!root) return;
+  root.innerHTML = `
+  <div class="lightbox-overlay" data-action="fechar-lightbox">
+    <div class="lightbox-inner" onclick="event.stopPropagation()">
+      ${tipo === "video"
+        ? `<video src="${src}" controls autoplay class="lightbox-media"></video>`
+        : `<img src="${src}" class="lightbox-media" />`}
+      <div class="lightbox-actions">
+        <a href="${src}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">↗ Abrir em nova aba</a>
+        <button class="btn btn-outline btn-sm" data-action="fechar-lightbox">✕ Fechar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function hideLightbox() {
+  const root = qs("lightbox-root");
+  if (root) root.innerHTML = "";
+}
+
 async function buscarCEP(digits) {
   try {
     const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
@@ -104,6 +149,12 @@ async function buscarCEP(digits) {
 }
 
 /* ============================= data loading ============================= */
+async function carregarConfigPublico() {
+  try {
+    state.publicConfig = await api.get("/api/config");
+    document.title = state.publicConfig.clinicaNome || document.title;
+  } catch { /* segue com os valores padrão */ }
+}
 async function carregarMeusAgendamentos() {
   state.meusAgendamentos = await api.get("/api/agendamentos/meus");
 }
@@ -124,6 +175,9 @@ async function carregarVetSolicitacoes() {
 async function carregarVetClientes() {
   state.vetClientes = await api.get("/api/vet/clientes");
 }
+async function carregarVetConfig() {
+  state.vetConfig = await api.get("/api/vet/config");
+}
 
 /* ============================= render root ============================= */
 function render() {
@@ -143,11 +197,13 @@ function viewHTML() {
 
 /* ============================= LANDING ============================= */
 function viewLanding() {
+  const cfg = state.publicConfig;
   return `
   <div class="landing-hero"><div class="landing-inner">
     <div class="center">
-      <div class="landing-pill">🏠 Atendimento veterinário em domicílio</div>
-      <h1 class="h1">Cuidado com pets,<br/>na porta de casa</h1>
+      ${cfg.logoPath ? `<img src="${cfg.logoPath}" class="landing-logo" />` : ""}
+      <div class="landing-pill">🏠 ${esc(cfg.clinicaNome)}</div>
+      <h1 class="h1">${esc(cfg.clinicaSlogan)}</h1>
       <p class="muted">Agende visitas, acompanhe o histórico e a carteirinha de vacinação do seu companheiro — tudo em um só lugar.</p>
     </div>
     <div class="landing-cards">
@@ -222,11 +278,13 @@ function viewClienteRegistro() {
 
 /* ============================= CLIENTE: DASHBOARD ============================= */
 function topBar({ titulo, subtitulo, icone, onBack }) {
+  const cfg = state.publicConfig;
+  const iconeHtml = cfg.logoPath ? `<img src="${cfg.logoPath}" style="width:100%;height:100%;object-fit:cover;border-radius:999px" />` : icone;
   return `
   <div class="vd-topbar">
     <div class="vd-topbar-title">
       ${onBack ? `<button class="vd-back" data-action="ir" data-view="${onBack}">←</button>` : ""}
-      <div class="vd-topbar-icon">${icone}</div>
+      <div class="vd-topbar-icon">${iconeHtml}</div>
       <div>
         <p class="serif t1">${esc(titulo)}</p>
         ${subtitulo ? `<p class="t2">${esc(subtitulo)}</p>` : ""}
@@ -329,6 +387,14 @@ function petExpandidoHTML(pet, editable) {
     ${photoBoxHTML({ photoPath: pet.fotoPath, label: "Foto do pet", editable, round: true, addAction: "upload-foto-pet", removeAction: "remover-foto-pet", id: pet.id })}
   </div>`;
 
+  if (editable) {
+    html += `<div class="card-tight" style="background:#FBF4E4;border:1px solid var(--line);border-radius:10px">
+      <p class="label" style="margin-bottom:.4rem">🔒 Notas privadas (o cliente não vê isso)</p>
+      <textarea class="input" id="notas-privadas-${pet.id}" placeholder="Anotações internas sobre o paciente, comportamento, cuidados especiais...">${esc(pet.notasPrivadas || "")}</textarea>
+      <button class="btn btn-outline btn-sm" style="margin-top:.5rem" data-action="salvar-notas-privadas" data-pet-id="${pet.id}">Salvar notas</button>
+    </div>`;
+  }
+
   html += `<div class="card-tight" style="background:var(--bg);border:1px solid var(--line-soft);border-radius:10px">
     <p style="font-weight:700;color:var(--green-dark);margin:0 0 .7rem;display:flex;align-items:center;gap:.4rem">💉 Carteira de vacinação digital</p>`;
 
@@ -382,7 +448,7 @@ function photoBoxHTML({ photoPath, label, editable, round, addAction, removeActi
   let html = `<p class="label" style="margin-bottom:.5rem">${esc(label)}</p>`;
   if (photoPath) {
     html += `<div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap">
-      <img src="${photoPath}" class="${round ? "avatar-round" : "thumb-square"}" />
+      <img src="${photoPath}" class="${round ? "avatar-round" : "thumb-square"} clickable-photo" data-action="ver-midia" data-src="${photoPath}" data-tipo="imagem" />
       ${editable ? `
       <div style="display:flex;flex-direction:column;gap:.5rem">
         <button class="btn btn-outline btn-sm" data-action="trigger-file" data-target="${inputId}">📷 Substituir</button>
@@ -469,7 +535,10 @@ function meusAgendamentosHTML() {
         </ul>` : `<p class="small muted" style="margin:.2rem 0">${formatDateBR(a.data)} às ${a.horario}</p>`}
       <p class="small muted" style="margin:.2rem 0">${esc(a.motivo)}</p>
       ${a.endereco ? `<p class="tiny muted" style="margin:.2rem 0">📍 ${esc(enderecoTexto(a.endereco))}</p>` : ""}
-      ${a.observacoesVet ? `<p class="small" style="margin:.4rem 0 0;color:var(--green-dark)">Obs. da veterinária: ${esc(a.observacoesVet)}</p>` : ""}
+      ${a.midiaPath ? `<div style="margin:.5rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:220px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="video"></video>` : `<img src="${a.midiaPath}" class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:220px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="imagem" />`}</div>` : ""}
+      ${a.observacoesVet && a.status !== "recusado" ? `<p class="small" style="margin:.4rem 0 0;color:var(--green-dark)">Obs. da veterinária: ${esc(a.observacoesVet)}</p>` : ""}
+      ${a.status === "confirmado" ? `<div style="margin-top:.6rem">${calendarButtonHTML(a)}</div>` : ""}
+      ${anexosHTML(a, false)}
       ${["aguardando", "confirmado"].includes(a.status) ? `<button class="btn btn-danger btn-sm" style="margin-top:.7rem" data-action="cliente-cancelar" data-id="${a.id}">✕ Cancelar</button>` : ""}
     </div>`).join("");
 }
@@ -482,6 +551,7 @@ function historicoHTML() {
       <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem"><p style="margin:0;font-weight:700">${esc(a.petNome)}</p>${badge(a.status)}</div>
       <p class="small muted" style="margin:.2rem 0">${formatDateBR(a.data)} · ${esc(a.motivo)}</p>
       ${a.observacoesVet ? `<p class="small" style="margin-top:.5rem;background:var(--bg);border-radius:8px;padding:.6rem">${esc(a.observacoesVet)}</p>` : ""}
+      ${anexosHTML(a, false)}
     </div>`).join("");
 }
 
@@ -509,15 +579,12 @@ function viewVetDash() {
     ["agenda", "📅", "Agenda"],
     ["clientes", "👤", "Clientes"],
     ["carteiras", "💉", "Carteiras"],
+    ["config", "⚙️", "Config."],
   ];
   return `
   <div class="vd-shell">
     ${topBar({ titulo: "Painel da veterinária", subtitulo: "Área restrita", icone: "🩺" })}
     <div class="vd-main">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:.8rem">
-        <button class="btn btn-ghost btn-sm" data-action="toggle-senha">🔑 Alterar senha</button>
-      </div>
-      ${state.vetShowSenha ? alterarSenhaHTML() : ""}
       ${vetTabContent()}
     </div>
     <div class="vd-tabs-bar vd-tabs">
@@ -532,15 +599,12 @@ function viewVetDash() {
 function alterarSenhaHTML() {
   return `
   <div class="card" style="max-width:420px">
-    <p style="font-weight:700;margin:0 0 .8rem">Alterar senha de acesso</p>
+    <p style="font-weight:700;margin:0 0 .8rem">🔑 Alterar senha de acesso</p>
     <div class="field"><input class="input" type="password" id="senha-atual" placeholder="Senha atual" /></div>
     <div class="field"><input class="input" type="password" id="senha-nova" placeholder="Nova senha" /></div>
     <div class="field"><input class="input" type="password" id="senha-confirma" placeholder="Confirmar nova senha" /></div>
     <div id="senha-err"></div>
-    <div style="display:flex;gap:.5rem">
-      <button class="btn btn-primary btn-sm" data-action="vet-salvar-senha">Salvar</button>
-      <button class="btn btn-ghost btn-sm" data-action="toggle-senha">Cancelar</button>
-    </div>
+    <button class="btn btn-primary btn-sm" data-action="vet-salvar-senha">Salvar senha</button>
   </div>`;
 }
 
@@ -550,6 +614,7 @@ function vetTabContent() {
   if (state.vetTab === "agenda") return vetAgendaHTML();
   if (state.vetTab === "clientes") return vetClientesHTML();
   if (state.vetTab === "carteiras") return vetCarteirasHTML();
+  if (state.vetTab === "config") return vetConfigHTML();
   return "";
 }
 
@@ -595,7 +660,7 @@ function vetSolicitacoesHTML() {
       <p class="small muted" style="margin:.2rem 0">${esc(a.motivo)}</p>
       ${a.clienteTelefone ? `<p class="tiny muted" style="margin:.2rem 0">📞 ${esc(a.clienteTelefone)}</p>` : ""}
       ${a.endereco ? `<div class="small muted" style="margin:.4rem 0"><p style="margin:0">📍 ${esc(enderecoTexto(a.endereco))}</p><a class="link tiny" href="${mapsUrl(a.endereco)}" target="_blank" rel="noopener">Abrir no mapa →</a></div>` : ""}
-      ${a.midiaPath ? `<div style="margin:.6rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square" style="width:100%;height:auto;max-width:280px"></video>` : `<img src="${a.midiaPath}" class="thumb-square" style="width:100%;height:auto;max-width:280px" />`}</div>` : ""}
+      ${a.midiaPath ? `<div style="margin:.6rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:280px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="video"></video>` : `<img src="${a.midiaPath}" class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:280px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="imagem" />`}</div>` : ""}
       <p class="eyebrow" style="margin-top:.7rem">OPÇÕES ENVIADAS PELO CLIENTE</p>
       <div>
         ${a.opcoes.map((o, i) => `
@@ -606,6 +671,33 @@ function vetSolicitacoesHTML() {
       </div>
       <button class="btn btn-danger btn-sm" style="margin-top:.4rem" data-action="vet-recusar" data-id="${a.id}">✕ Recusar solicitação</button>
     </div>`).join("")}`;
+}
+
+function anexosHTML(ag, editable) {
+  const anexos = ag.anexosVet || [];
+  if (!editable && anexos.length === 0) return "";
+  let html = `<div style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line-soft)">
+    <p class="label" style="margin-bottom:.5rem">📎 Anexos (receitas, exames...)</p>`;
+  if (anexos.length === 0) {
+    html += `<p class="tiny muted" style="margin-bottom:.5rem">Nenhum arquivo anexado.</p>`;
+  } else {
+    anexos.forEach((a) => {
+      html += `<div class="list-item">
+        <a href="${a.path}" target="_blank" rel="noopener" class="small" style="text-decoration:none;color:var(--ink);display:flex;align-items:center;gap:.4rem;min-width:0"><span>${fileIconFor(a.mime)}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nome)}</span></a>
+        ${editable ? `<button class="btn btn-ghost btn-sm" data-action="remover-anexo" data-id="${ag.id}" data-anexo-id="${a.id}">🗑️</button>` : ""}
+      </div>`;
+    });
+  }
+  if (editable) {
+    html += `<button class="btn btn-outline btn-sm" style="margin-top:.4rem" data-action="trigger-file" data-target="anexo-file-${ag.id}">📎 Anexar arquivo</button>
+    <input type="file" id="anexo-file-${ag.id}" style="display:none" data-upload="anexo-vet" data-id="${ag.id}" accept="image/*,application/pdf,.doc,.docx,.txt" />`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function calendarButtonHTML(ag) {
+  return `<a href="${googleCalendarUrl(ag)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">📆 Google Agenda</a>`;
 }
 
 function vetAgendaHTML() {
@@ -626,7 +718,8 @@ function vetAgendaHTML() {
       <p class="small muted" style="margin:.2rem 0">${formatDateBR(a.data)} às ${a.horario} · ${esc(a.motivo)}</p>
       ${a.clienteTelefone ? `<p class="tiny muted" style="margin:.2rem 0">📞 ${esc(a.clienteTelefone)}</p>` : ""}
       ${a.endereco ? `<div class="small muted" style="margin:.4rem 0"><p style="margin:0">📍 ${esc(enderecoTexto(a.endereco))}</p><a class="link tiny" href="${mapsUrl(a.endereco)}" target="_blank" rel="noopener">Abrir no mapa →</a></div>` : ""}
-      ${a.midiaPath ? `<div style="margin:.6rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square" style="width:100%;height:auto;max-width:280px"></video>` : `<img src="${a.midiaPath}" class="thumb-square" style="width:100%;height:auto;max-width:280px" />`}</div>` : ""}
+      ${a.midiaPath ? `<div style="margin:.6rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:280px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="video"></video>` : `<img src="${a.midiaPath}" class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:280px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="imagem" />`}</div>` : ""}
+      ${a.status === "confirmado" ? `<div style="margin:.5rem 0">${calendarButtonHTML(a)}</div>` : ""}
       ${a.status === "confirmado" ? `
         <div style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line-soft)">
           <p class="label">Concluir atendimento e registrar observações</p>
@@ -637,6 +730,7 @@ function vetAgendaHTML() {
           </div>
         </div>` : ""}
       ${a.status === "concluido" && a.observacoesVet ? `<p class="small" style="margin-top:.6rem;background:var(--bg);border-radius:8px;padding:.6rem">${esc(a.observacoesVet)}</p>` : ""}
+      ${["confirmado", "concluido"].includes(a.status) ? anexosHTML(a, true) : ""}
     </div>`).join("")}`;
 }
 
@@ -779,6 +873,48 @@ function vetCarteirasHTML() {
   return html;
 }
 
+function vetConfigHTML() {
+  const cfg = state.vetConfig || state.publicConfig;
+  return `
+  <p class="h2">Configurações</p>
+
+  ${alterarSenhaHTML()}
+
+  <div class="card" style="max-width:520px">
+    <p style="font-weight:700;margin:0 0 .3rem">🎨 Identidade visual</p>
+    <p class="tiny muted" style="margin:0 0 .9rem">O nome, o slogan e a logo aparecem na tela inicial e no topo do sistema, para clientes e para você.</p>
+
+    <p class="label" style="margin-bottom:.5rem">Logo</p>
+    ${cfg.logoPath ? `
+      <div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1rem">
+        <img src="${cfg.logoPath}" class="thumb-square clickable-photo" style="width:96px;height:96px" data-action="ver-midia" data-src="${cfg.logoPath}" data-tipo="imagem" />
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          <button class="btn btn-outline btn-sm" data-action="trigger-file" data-target="logo-file">📷 Substituir</button>
+          <button class="btn btn-danger btn-sm" data-action="remover-logo">🗑️ Remover</button>
+        </div>
+      </div>` : `
+      <div style="margin-bottom:1rem">
+        <p class="small muted" style="margin-bottom:.5rem">Nenhuma logo cadastrada.</p>
+        <button class="btn btn-outline btn-sm" data-action="trigger-file" data-target="logo-file">📷 Adicionar logo</button>
+      </div>`}
+    <input type="file" id="logo-file" accept="image/*" style="display:none" data-upload="logo" />
+
+    <div class="field"><label class="label">Nome do negócio</label><input class="input" id="cfg-nome" value="${esc(cfg.clinicaNome || "")}" /></div>
+    <div class="field"><label class="label">Slogan / frase de destaque</label><input class="input" id="cfg-slogan" value="${esc(cfg.clinicaSlogan || "")}" /></div>
+    <div id="cfg-identidade-err"></div>
+    <button class="btn btn-primary btn-sm" data-action="vet-salvar-identidade">Salvar identidade visual</button>
+  </div>
+
+  <div class="card" style="max-width:520px">
+    <p style="font-weight:700;margin:0 0 .3rem">✉️ Mensagens automáticas</p>
+    <p class="tiny muted" style="margin:0 0 .9rem">Use estas variáveis: <code>{cliente}</code> <code>{pet}</code> <code>{data}</code> <code>{horario}</code> <code>{endereco}</code> <code>{clinica}</code></p>
+    <div class="field"><label class="label">Mensagem ao confirmar uma visita</label><textarea class="input" id="cfg-msg-confirma" rows="4">${esc(state.vetConfig?.mensagemConfirmacao || "")}</textarea></div>
+    <div class="field"><label class="label">Mensagem ao recusar uma solicitação</label><textarea class="input" id="cfg-msg-recusa" rows="4">${esc(state.vetConfig?.mensagemRecusa || "")}</textarea></div>
+    <div id="cfg-msg-err"></div>
+    <button class="btn btn-primary btn-sm" data-action="vet-salvar-mensagens">Salvar mensagens</button>
+  </div>`;
+}
+
 /* ============================= ações ============================= */
 async function performAction(action, el) {
   try {
@@ -786,6 +922,14 @@ async function performAction(action, el) {
       case "ir": {
         state.view = el.dataset.view;
         render();
+        break;
+      }
+      case "ver-midia": {
+        showLightbox(el.dataset.src, el.dataset.tipo);
+        break;
+      }
+      case "fechar-lightbox": {
+        hideLightbox();
         break;
       }
       case "logout": {
@@ -881,6 +1025,14 @@ async function performAction(action, el) {
         render();
         break;
       }
+      case "salvar-notas-privadas": {
+        const petId = el.dataset.petId;
+        await api.patch(`/api/pets/${petId}`, { notasPrivadas: val(`notas-privadas-${petId}`) });
+        await refreshVetOrCliente();
+        showToast("Notas privadas salvas.");
+        render();
+        break;
+      }
       case "trigger-file": qs(el.dataset.target)?.click(); break;
       case "remover-foto-pet": {
         await api.del(`/api/pets/${el.dataset.id}/foto`);
@@ -935,6 +1087,12 @@ async function performAction(action, el) {
         render();
         break;
       }
+      case "remover-anexo": {
+        await api.del(`/api/agendamentos/${el.dataset.id}/anexos/${el.dataset.anexoId}`);
+        await Promise.all([carregarVetAgenda(), carregarVetPainel()]);
+        render();
+        break;
+      }
 
       /* ---- vet auth ---- */
       case "vet-login": {
@@ -949,17 +1107,40 @@ async function performAction(action, el) {
         } catch (e) { qs("vet-login-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
         break;
       }
-      case "toggle-senha": state.vetShowSenha = !state.vetShowSenha; render(); break;
       case "vet-salvar-senha": {
         qs("senha-err").innerHTML = "";
         const nova = val("senha-nova"), confirma = val("senha-confirma");
         if (nova !== confirma) { qs("senha-err").innerHTML = `<p class="error-text">As senhas não coincidem.</p>`; return; }
         try {
           await api.post("/api/vet/senha", { atual: val("senha-atual"), nova });
-          state.vetShowSenha = false;
           showToast("Senha alterada com sucesso.");
           render();
         } catch (e) { qs("senha-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
+        break;
+      }
+      case "vet-salvar-identidade": {
+        qs("cfg-identidade-err").innerHTML = "";
+        try {
+          state.vetConfig = await api.patch("/api/vet/config", { clinicaNome: val("cfg-nome"), clinicaSlogan: val("cfg-slogan") });
+          await carregarConfigPublico();
+          showToast("Identidade visual atualizada.");
+          render();
+        } catch (e) { qs("cfg-identidade-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
+        break;
+      }
+      case "vet-salvar-mensagens": {
+        qs("cfg-msg-err").innerHTML = "";
+        try {
+          state.vetConfig = await api.patch("/api/vet/config", { mensagemConfirmacao: val("cfg-msg-confirma"), mensagemRecusa: val("cfg-msg-recusa") });
+          showToast("Mensagens automáticas atualizadas.");
+          render();
+        } catch (e) { qs("cfg-msg-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
+        break;
+      }
+      case "remover-logo": {
+        state.vetConfig = await api.del("/api/vet/config/logo");
+        await carregarConfigPublico();
+        render();
         break;
       }
 
@@ -970,6 +1151,7 @@ async function performAction(action, el) {
         else if (state.vetTab === "agenda") await carregarVetAgenda();
         else if (state.vetTab === "clientes" || state.vetTab === "carteiras") await carregarVetClientes();
         else if (state.vetTab === "painel") await carregarVetPainel();
+        else if (state.vetTab === "config") await carregarVetConfig();
         render();
         break;
       }
@@ -1057,6 +1239,30 @@ async function handleFileUpload(el) {
     stagedMidiaFile = file;
     const nomeEl = qs("ag-midia-nome");
     if (nomeEl) nomeEl.textContent = "Selecionado: " + file.name;
+    return;
+  }
+
+  if (tipo === "logo") {
+    const fd = new FormData();
+    fd.append("logo", file);
+    try {
+      state.vetConfig = await api.postForm("/api/vet/config/logo", fd);
+      await carregarConfigPublico();
+      render();
+    } catch (e) { showToast(e.message, true); }
+    return;
+  }
+
+  if (tipo === "anexo-vet") {
+    if (file.size > 10 * 1024 * 1024) { showToast("Arquivo muito grande (máx. 10MB).", true); el.value = ""; return; }
+    const fd = new FormData();
+    fd.append("arquivo", file);
+    try {
+      await api.postForm(`/api/agendamentos/${id}/anexos`, fd);
+      await Promise.all([carregarVetAgenda(), carregarVetPainel()]);
+      showToast("Arquivo anexado.");
+      render();
+    } catch (e) { showToast(e.message, true); }
     return;
   }
 
@@ -1156,8 +1362,9 @@ function filtrarListaClientesInline(termoBruto) {
 
 /* ============================= boot ============================= */
 async function init() {
-  qs("app").innerHTML = `<div id="view"></div><div id="toast-root"></div>`;
+  qs("app").innerHTML = `<div id="view"></div><div id="toast-root"></div><div id="lightbox-root"></div>`;
   bindDelegatedEvents();
+  await carregarConfigPublico();
 
   const token = getToken(), tipo = getTipo();
   if (token && tipo === "cliente") {

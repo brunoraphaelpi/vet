@@ -1,11 +1,14 @@
 const express = require("express");
 const crypto = require("crypto");
-const { getDB, save } = require("../db");
+const fs = require("fs");
+const path = require("path");
+const { getDB, save, UPLOADS_DIR } = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const upload = require("../upload");
+const { uploadDoc } = require("../upload");
 const { enviarEmail } = require("../mailer");
 const { linkWhatsapp } = require("../whatsapp");
-const { formatarDataBR, enderecoTexto, sortAgendamentos } = require("../utils");
+const { formatarDataBR, enderecoTexto, sortAgendamentos, aplicarTemplate } = require("../utils");
 
 const router = express.Router();
 
@@ -13,6 +16,22 @@ function parseJSON(v, fallback) {
   if (v === undefined || v === null || v === "") return fallback;
   if (typeof v !== "string") return v;
   try { return JSON.parse(v); } catch { return fallback; }
+}
+
+async function notificar(db, ag, template) {
+  const cliente = db.clientes[ag.clienteCpf];
+  const nomeClinica = db.config.clinicaNome || "Atendimento Veterinário em Domicílio";
+  const mensagem = aplicarTemplate(template, {
+    cliente: cliente.nome,
+    pet: ag.petNome,
+    data: formatarDataBR(ag.data || ag.opcoes?.[0]?.data),
+    horario: ag.horario || ag.opcoes?.[0]?.horario || "",
+    endereco: enderecoTexto(ag.endereco),
+    clinica: nomeClinica,
+  });
+  const email = await enviarEmail({ to: cliente.email, subject: "Sobre sua visita 🐾", text: mensagem });
+  const whatsappUrl = linkWhatsapp(cliente.telefone, mensagem);
+  return { email, whatsappUrl, mensagem };
 }
 
 // Cliente propõe até 3 opções de dia/horário para uma visita
@@ -46,6 +65,7 @@ router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res
     endereco,
     midiaPath: req.file ? `/uploads/${req.file.filename}` : null,
     midiaTipo: req.file ? (req.file.mimetype.startsWith("video") ? "video" : "imagem") : null,
+    anexosVet: [],
     opcoes: opcoes.slice(0, 3),
     status: "aguardando", // aguardando -> confirmado -> concluido | recusado | cancelado
     data: null,
@@ -80,6 +100,40 @@ router.post("/:id/cancelar", requireAuth(), async (req, res) => {
   res.json(ag);
 });
 
+/* ---- anexos da veterinária (receitas, exames, etc.) ---- */
+
+router.post("/:id/anexos", requireAuth("vet"), uploadDoc.single("arquivo"), async (req, res) => {
+  const db = getDB();
+  const ag = db.agendamentos[req.params.id];
+  if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
+  if (!req.file) return res.status(400).json({ erro: "Envie um arquivo." });
+  const anexo = {
+    id: crypto.randomUUID(),
+    nome: req.file.originalname,
+    path: `/uploads/${req.file.filename}`,
+    mime: req.file.mimetype,
+    criadoEm: new Date().toISOString(),
+  };
+  ag.anexosVet = ag.anexosVet || [];
+  ag.anexosVet.push(anexo);
+  await save();
+  res.json(ag);
+});
+
+router.delete("/:id/anexos/:anexoId", requireAuth("vet"), async (req, res) => {
+  const db = getDB();
+  const ag = db.agendamentos[req.params.id];
+  if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
+  const anexo = (ag.anexosVet || []).find((a) => a.id === req.params.anexoId);
+  if (anexo) {
+    ag.anexosVet = ag.anexosVet.filter((a) => a.id !== req.params.anexoId);
+    const filePath = path.join(UPLOADS_DIR, path.basename(anexo.path));
+    fs.unlink(filePath, () => {}); // melhor esforço — não bloqueia a resposta
+  }
+  await save();
+  res.json(ag);
+});
+
 /* ---- rotas da veterinária ---- */
 
 router.get("/vet/todos", requireAuth("vet"), (req, res) => {
@@ -107,14 +161,8 @@ router.post("/:id/confirmar", requireAuth("vet"), async (req, res) => {
   ag.horario = opcao.horario;
   await save();
 
-  const cliente = db.clientes[ag.clienteCpf];
-  const nomeClinica = db.config.clinicaNome || "Atendimento Veterinário em Domicílio";
-  const mensagem = `Olá, ${cliente.nome}! Sua visita para ${ag.petNome} foi confirmada para ${formatarDataBR(ag.data)} às ${ag.horario}. Endereço: ${enderecoTexto(ag.endereco)}. - ${nomeClinica}`;
-
-  const email = await enviarEmail({ to: cliente.email, subject: "Sua visita foi confirmada 🐾", text: mensagem });
-  const whatsappUrl = linkWhatsapp(cliente.telefone, mensagem);
-
-  res.json({ agendamento: ag, notificacao: { email, whatsappUrl, mensagem } });
+  const notificacao = await notificar(db, ag, db.config.mensagemConfirmacao);
+  res.json({ agendamento: ag, notificacao });
 });
 
 router.post("/:id/recusar", requireAuth("vet"), async (req, res) => {
@@ -125,7 +173,9 @@ router.post("/:id/recusar", requireAuth("vet"), async (req, res) => {
   ag.status = "recusado";
   if (req.body.motivo) ag.observacoesVet = req.body.motivo;
   await save();
-  res.json(ag);
+
+  const notificacao = await notificar(db, ag, db.config.mensagemRecusa);
+  res.json({ agendamento: ag, notificacao });
 });
 
 router.post("/:id/concluir", requireAuth("vet"), async (req, res) => {

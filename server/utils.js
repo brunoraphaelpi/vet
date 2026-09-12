@@ -28,10 +28,14 @@ function enderecoTexto(end) {
   return partes.join(", ");
 }
 
+function aplicarTemplate(template, vars) {
+  return String(template || "").replace(/\{(\w+)\}/g, (m, chave) => (vars[chave] !== undefined ? vars[chave] : m));
+}
+
 function sortAgendamentos(a, b) {
   const da = a.data || "9999", db_ = b.data || "9999";
   if (da !== db_) return da.localeCompare(db_);
   return (a.horario || "").localeCompare(b.horario || "");
 }
 
-module.exports = { onlyDigits, semSenha, formatarDataBR, enderecoTexto, sortAgendamentos };
+module.exports = { onlyDigits, semSenha, formatarDataBR, enderecoTexto, sortAgendamentos, aplicarTemplate };

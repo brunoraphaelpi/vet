@@ -20,4 +20,16 @@ const upload = multer({
   },
 });
 
+// usado para anexos da veterinária (receitas, exames, etc.) — aceita documentos comuns além de imagens
+const uploadDoc = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ok = /^(image\/|application\/pdf$|application\/msword$|application\/vnd\.openxmlformats|text\/plain$)/.test(file.mimetype);
+    if (ok) cb(null, true);
+    else cb(new Error("Formato de arquivo não suportado. Envie imagem, PDF, Word ou texto."));
+  },
+});
+
 module.exports = upload;
+module.exports.uploadDoc = uploadDoc;

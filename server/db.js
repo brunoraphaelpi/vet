@@ -7,10 +7,17 @@ const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 
 const DEFAULT_DATA = {
   clientes: {}, // cpf -> { cpf, nome, telefone, email, senhaHash, enderecoPadrao, criadoEm }
-  pets: {}, // id -> { id, clienteCpf, nome, especie, raca, idade, obs, fotoPath, carteiraFotoPath }
+  pets: {}, // id -> { id, clienteCpf, nome, especie, raca, idade, obs, fotoPath, carteiraFotoPath, notasPrivadas }
   vacinas: {}, // id -> { id, petId, nome, data, proximaDose, lote }
-  agendamentos: {}, // id -> { id, clienteCpf, clienteNome, petId, petNome, motivo, endereco, midiaPath, midiaTipo, opcoes, status, data, horario, observacoesVet, criadoEm }
-  config: { vetSenhaHash: null, clinicaNome: "Atendimento Veterinário em Domicílio" },
+  agendamentos: {}, // id -> { id, clienteCpf, clienteNome, petId, petNome, motivo, endereco, midiaPath, midiaTipo, anexosVet, opcoes, status, data, horario, observacoesVet, criadoEm }
+  config: {
+    vetSenhaHash: null,
+    clinicaNome: "Atendimento Veterinário em Domicílio",
+    clinicaSlogan: "Cuidado com pets, na porta de casa",
+    logoPath: null,
+    mensagemConfirmacao: "Olá, {cliente}! Sua visita para {pet} foi confirmada para {data} às {horario}. Endereço: {endereco}. - {clinica}",
+    mensagemRecusa: "Olá, {cliente}. Infelizmente não conseguimos atender nenhuma das opções enviadas para a visita de {pet}. Podemos combinar um novo horário? - {clinica}",
+  },
 };
 
 function ensureDataDir() {

@@ -16,7 +16,7 @@ router.post("/", requireAuth(), async (req, res) => {
   if (!nome || !nome.trim()) return res.status(400).json({ erro: "Informe o nome do pet." });
 
   const id = crypto.randomUUID();
-  db.pets[id] = { id, clienteCpf, nome: nome.trim(), especie: especie || "Cão", raca: raca || "", idade: idade || "", obs: obs || "", fotoPath: null, carteiraFotoPath: null };
+  db.pets[id] = { id, clienteCpf, nome: nome.trim(), especie: especie || "Cão", raca: raca || "", idade: idade || "", obs: obs || "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
   await save();
   res.json({ ...db.pets[id], vacinas: [] });
 });
@@ -25,12 +25,13 @@ router.patch("/:id", requireAuth("vet"), async (req, res) => {
   const db = getDB();
   const pet = db.pets[req.params.id];
   if (!pet) return res.status(404).json({ erro: "Pet não encontrado." });
-  const { nome, especie, raca, idade, obs } = req.body || {};
+  const { nome, especie, raca, idade, obs, notasPrivadas } = req.body || {};
   if (nome !== undefined) pet.nome = nome;
   if (especie !== undefined) pet.especie = especie;
   if (raca !== undefined) pet.raca = raca;
   if (idade !== undefined) pet.idade = idade;
   if (obs !== undefined) pet.obs = obs;
+  if (notasPrivadas !== undefined) pet.notasPrivadas = notasPrivadas;
   await save();
   res.json(pet);
 });

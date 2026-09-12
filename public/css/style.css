@@ -135,6 +135,20 @@ textarea.input { resize: vertical; min-height: 4.5rem; }
 
 .avatar-round { width: 84px; height: 84px; border-radius: 999px; object-fit: cover; border: 1px solid var(--line); }
 .thumb-square { width: 140px; height: 140px; border-radius: 12px; object-fit: cover; border: 1px solid var(--line); }
+.clickable-photo { cursor: zoom-in; transition: filter .12s ease; }
+.clickable-photo:hover { filter: brightness(.93); }
+
+.landing-logo { max-width: 96px; max-height: 96px; object-fit: contain; margin: 0 auto 1rem; border-radius: 12px; }
+
+.lightbox-overlay {
+  position: fixed; inset: 0; background: rgba(20, 24, 18, .88);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 1.2rem; cursor: zoom-out;
+}
+.lightbox-inner { max-width: 92vw; max-height: 88vh; display: flex; flex-direction: column; align-items: center; gap: .8rem; cursor: default; }
+.lightbox-media { max-width: 92vw; max-height: 74vh; border-radius: 10px; object-fit: contain; background: #000; }
+.lightbox-actions { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; }
+code { background: var(--bg-alt); border-radius: 4px; padding: .05rem .35rem; font-size: .85em; }
 
 .slot { border: 1.5px solid var(--line); border-radius: 10px; padding: .7rem .9rem; cursor: pointer; background: #fff; margin-bottom: .5rem; }
 .slot.selected { border-color: var(--green); background: var(--bg-alt); box-shadow: 0 0 0 3px rgba(63,93,68,.12); }

@@ -41,6 +41,7 @@ router.post("/registrar", async (req, res) => {
       obs: "",
       fotoPath: null,
       carteiraFotoPath: null,
+      notasPrivadas: "",
     };
   }
 
@@ -77,7 +78,10 @@ router.get("/me", requireAuth("cliente"), (req, res) => {
   if (!cliente) return res.status(404).json({ erro: "Cliente não encontrado." });
   const pets = Object.values(db.pets)
     .filter((p) => p.clienteCpf === cliente.cpf)
-    .map((p) => ({ ...p, vacinas: Object.values(db.vacinas).filter((v) => v.petId === p.id) }));
+    .map((p) => {
+      const { notasPrivadas, ...petPublico } = p;
+      return { ...petPublico, vacinas: Object.values(db.vacinas).filter((v) => v.petId === p.id) };
+    });
   res.json({ cliente: semSenha(cliente), pets });
 });
 

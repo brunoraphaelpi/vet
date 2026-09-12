@@ -26,6 +26,7 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/pets", require("./routes/pets"));
 app.use("/api/agendamentos", require("./routes/agendamentos"));
 app.use("/api/vet", require("./routes/vet"));
+app.use("/api/config", require("./routes/config"));
 
 // erros do multer (ex: arquivo grande demais) viram um JSON amigável em vez de travar
 app.use((err, req, res, next) => {

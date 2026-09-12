@@ -1,8 +1,11 @@
 const express = require("express");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const bcrypt = require("bcryptjs");
-const { getDB, save } = require("../db");
+const { getDB, save, UPLOADS_DIR } = require("../db");
 const requireAuth = require("../middleware/requireAuth");
+const upload = require("../upload");
 const { onlyDigits, semSenha, sortAgendamentos } = require("../utils");
 
 const router = express.Router();
@@ -40,7 +43,7 @@ router.post("/clientes", requireAuth("vet"), async (req, res) => {
 
   if (pet && pet.nome && pet.nome.trim()) {
     const id = crypto.randomUUID();
-    db.pets[id] = { id, clienteCpf: digits, nome: pet.nome.trim(), especie: pet.especie || "Cão", raca: pet.raca || "", idade: pet.idade || "", obs: "", fotoPath: null, carteiraFotoPath: null };
+    db.pets[id] = { id, clienteCpf: digits, nome: pet.nome.trim(), especie: pet.especie || "Cão", raca: pet.raca || "", idade: pet.idade || "", obs: "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
   }
 
   await save();
@@ -67,6 +70,45 @@ router.post("/senha", requireAuth("vet"), async (req, res) => {
   db.config.vetSenhaHash = bcrypt.hashSync(nova, 10);
   await save();
   res.json({ ok: true });
+});
+
+router.get("/config", requireAuth("vet"), (req, res) => {
+  const db = getDB();
+  const { vetSenhaHash, ...config } = db.config;
+  res.json(config);
+});
+
+router.patch("/config", requireAuth("vet"), async (req, res) => {
+  const db = getDB();
+  const { clinicaNome, clinicaSlogan, mensagemConfirmacao, mensagemRecusa } = req.body || {};
+  if (clinicaNome !== undefined) db.config.clinicaNome = clinicaNome;
+  if (clinicaSlogan !== undefined) db.config.clinicaSlogan = clinicaSlogan;
+  if (mensagemConfirmacao !== undefined) db.config.mensagemConfirmacao = mensagemConfirmacao;
+  if (mensagemRecusa !== undefined) db.config.mensagemRecusa = mensagemRecusa;
+  await save();
+  const { vetSenhaHash, ...config } = db.config;
+  res.json(config);
+});
+
+router.post("/config/logo", requireAuth("vet"), upload.single("logo"), async (req, res) => {
+  const db = getDB();
+  if (!req.file) return res.status(400).json({ erro: "Envie uma imagem." });
+  db.config.logoPath = `/uploads/${req.file.filename}`;
+  await save();
+  const { vetSenhaHash, ...config } = db.config;
+  res.json(config);
+});
+
+router.delete("/config/logo", requireAuth("vet"), async (req, res) => {
+  const db = getDB();
+  if (db.config.logoPath) {
+    const filePath = path.join(UPLOADS_DIR, path.basename(db.config.logoPath));
+    fs.unlink(filePath, () => {});
+  }
+  db.config.logoPath = null;
+  await save();
+  const { vetSenhaHash, ...config } = db.config;
+  res.json(config);
 });
 
 router.get("/painel", requireAuth("vet"), (req, res) => {

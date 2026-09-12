@@ -9,6 +9,31 @@ guarda os dados em disco (não depende de nenhum serviço externo) e pode ser ho
 em qualquer lugar que rode Node — de uma VPS simples a serviços como Railway, Render
 ou um servidor próprio.
 
+## O que o sistema já faz
+
+- Login de cliente por CPF/senha (com cadastro próprio) e área restrita da veterinária
+  com senha separada.
+- Agendamento por proposta: o cliente sugere até 3 opções de dia/horário, endereço
+  (com busca automática por CEP) e pode anexar uma foto ou vídeo do que está
+  acontecendo com o pet.
+- A veterinária escolhe uma das opções (ou recusa) direto pelo painel; a confirmação
+  ou recusa dispara e-mail automático (se configurado) e um link de WhatsApp pronto
+  para enviar em um toque.
+- Botão para adicionar a visita confirmada ao Google Agenda, tanto para o cliente
+  quanto para a veterinária.
+- Carteira de vacinação digital por pet, com foto da carteira física e foto do
+  próprio pet.
+- Notas privadas por pet, visíveis só para a veterinária (o cliente nunca recebe
+  esse campo, nem pela API).
+- A veterinária pode anexar arquivos (receitas, exames etc.) a cada visita; o
+  cliente só visualiza/baixa, não edita.
+- Fotos e vídeos podem ser clicados para ampliar ou abrir em outra aba.
+- Painel inicial da veterinária com lembretes de próximos agendamentos e vacinas
+  vencendo nos próximos 30 dias.
+- Identidade visual configurável (nome, slogan e logo) e os textos das mensagens
+  automáticas de confirmação/recusa são editáveis pela própria veterinária, na aba
+  "Config." do painel.
+
 ## Como funciona o agendamento
 
 1. O cliente propõe até 3 opções de dia/horário (junto com o endereço da visita, o
