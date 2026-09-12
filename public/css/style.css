@@ -173,7 +173,8 @@ code { background: var(--bg-alt); border-radius: 4px; padding: .05rem .35rem; fo
 
 .grid2 { display: grid; gap: .9rem; }
 
-.chip { display: inline-flex; align-items: center; gap: .3rem; background: var(--bg-alt); color: var(--green-dark); font-weight: 700; font-size: .74rem; padding: .3rem .6rem; border-radius: 999px; }
+.chip { display: inline-flex; align-items: center; gap: .3rem; background: var(--bg-alt); color: var(--green-dark); font-weight: 700; font-size: .74rem; padding: .3rem .6rem; border-radius: 999px; border: none; cursor: pointer; font-family: inherit; }
+.chip.active { background: var(--green); color: #fff; }
 
 /* ---------- larger screens ---------- */
 @media (min-width: 720px) {

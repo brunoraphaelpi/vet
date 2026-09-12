@@ -14,6 +14,9 @@ router.post("/registrar", async (req, res) => {
   if (!nome || !nome.trim()) return res.status(400).json({ erro: "Informe o nome completo." });
   if (digits.length !== 11) return res.status(400).json({ erro: "CPF inválido — deve ter 11 dígitos." });
   if (!senha || senha.length < 4) return res.status(400).json({ erro: "A senha deve ter ao menos 4 caracteres." });
+  if (!(email && email.trim()) && !(telefone && onlyDigits(telefone))) {
+    return res.status(400).json({ erro: "Informe pelo menos um contato: e-mail ou telefone." });
+  }
 
   const db = getDB();
   if (db.clientes[digits]) return res.status(409).json({ erro: "Já existe um cadastro com esse CPF. Faça login." });
@@ -26,6 +29,7 @@ router.post("/registrar", async (req, res) => {
     email: email || "",
     senhaHash,
     enderecoPadrao: null,
+    tags: [],
     criadoEm: new Date().toISOString(),
   };
 

@@ -29,6 +29,11 @@ const state = {
   vetCarteiraPetId: null,
   vetAddVacinaAberto: null,
   vetAddPetPara: null,
+  vetTags: [],
+  vetTemplates: [],
+  msgSelecionados: new Set(),
+  msgCanal: "ambos",
+  msgResultado: null,
 };
 
 let stagedMidiaFile = null;
@@ -178,6 +183,12 @@ async function carregarVetClientes() {
 async function carregarVetConfig() {
   state.vetConfig = await api.get("/api/vet/config");
 }
+async function carregarVetTags() {
+  state.vetTags = await api.get("/api/vet/tags");
+}
+async function carregarVetTemplates() {
+  state.vetTemplates = await api.get("/api/vet/templates-mensagem");
+}
 
 /* ============================= render root ============================= */
 function render() {
@@ -253,7 +264,8 @@ function viewClienteRegistro() {
         <div class="field"><label class="label">CPF</label><input class="input" id="reg-cpf" data-mask="cpf" inputmode="numeric" placeholder="000.000.000-00" /></div>
         <div class="field"><label class="label">Telefone (WhatsApp)</label><input class="input" id="reg-telefone" data-mask="phone" inputmode="numeric" placeholder="(00) 00000-0000" /></div>
       </div>
-      <div class="field"><label class="label">E-mail (opcional, para receber confirmações)</label><input class="input" id="reg-email" type="email" placeholder="voce@email.com" /></div>
+      <div class="field"><label class="label">E-mail</label><input class="input" id="reg-email" type="email" placeholder="voce@email.com" /></div>
+      <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um contato: telefone ou e-mail.</p>
       <div class="row2">
         <div class="field"><label class="label">Senha</label><input class="input" id="reg-senha" type="password" /></div>
         <div class="field"><label class="label">Confirmar senha</label><input class="input" id="reg-confirma" type="password" /></div>
@@ -578,6 +590,7 @@ function viewVetDash() {
     ["solicitacoes", "🔔", "Solicitações"],
     ["agenda", "📅", "Agenda"],
     ["clientes", "👤", "Clientes"],
+    ["mensagens", "📨", "Msgs"],
     ["carteiras", "💉", "Carteiras"],
     ["config", "⚙️", "Config."],
   ];
@@ -613,6 +626,7 @@ function vetTabContent() {
   if (state.vetTab === "solicitacoes") return vetSolicitacoesHTML();
   if (state.vetTab === "agenda") return vetAgendaHTML();
   if (state.vetTab === "clientes") return vetClientesHTML();
+  if (state.vetTab === "mensagens") return vetMensagensHTML();
   if (state.vetTab === "carteiras") return vetCarteirasHTML();
   if (state.vetTab === "config") return vetConfigHTML();
   return "";
@@ -757,8 +771,9 @@ function novoClienteFormHTML() {
     </div>
     <div class="row2">
       <div class="field"><label class="label">Telefone</label><input class="input" id="nc-telefone" data-mask="phone" inputmode="numeric" /></div>
-      <div class="field"><label class="label">E-mail (opcional)</label><input class="input" id="nc-email" type="email" /></div>
+      <div class="field"><label class="label">E-mail</label><input class="input" id="nc-email" type="email" /></div>
     </div>
+    <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um contato: telefone ou e-mail.</p>
     <div class="field"><label class="label">Senha temporária</label><input class="input" id="nc-senha" /></div>
     <hr class="hr" />
     <p class="eyebrow">PET (opcional)</p>
@@ -774,6 +789,24 @@ function novoClienteFormHTML() {
   </div>`;
 }
 
+function categoriasHTML(cliente) {
+  const tags = cliente.tags || [];
+  const sugestoes = (state.vetTags || []).filter((t) => !tags.includes(t));
+  return `
+  <div style="margin:1rem 0">
+    <p class="label" style="margin-bottom:.5rem">🏷️ Categorias</p>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem">
+      ${tags.length === 0 ? `<p class="tiny muted">Nenhuma categoria ainda.</p>` : tags.map((t) => `
+        <span class="chip" style="display:inline-flex;align-items:center;gap:.35rem">${esc(t)}<button data-action="remover-tag-cliente" data-cpf="${cliente.cpf}" data-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;font-weight:800;padding:0;line-height:1">✕</button></span>`).join("")}
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+      <input class="input" id="nova-tag-${cliente.cpf}" placeholder="Nova categoria" style="max-width:220px" />
+      <button class="btn btn-outline btn-sm" data-action="adicionar-tag-cliente" data-cpf="${cliente.cpf}">+ Adicionar</button>
+    </div>
+    ${sugestoes.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:.4rem">${sugestoes.map((t) => `<button class="chip" data-action="sugestao-tag-cliente" data-cpf="${cliente.cpf}" data-tag="${esc(t)}">+ ${esc(t)}</button>`).join("")}</div>` : ""}
+  </div>`;
+}
+
 function clienteExpandivelHTML(c) {
   const aberto = state.vetExpandidoCliente === c.cpf;
   let html = `
@@ -781,7 +814,7 @@ function clienteExpandivelHTML(c) {
     <button data-action="toggle-cliente" data-cpf="${c.cpf}" style="width:100%;background:none;border:none;padding:0;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
       <span>
         <p style="margin:0;font-weight:700">${esc(c.nome)}</p>
-        <p class="tiny muted" style="margin:0">${formatCPF(c.cpf)}${c.telefone ? " · " + esc(c.telefone) : ""} · ${c.pets.length} pet(s)</p>
+        <p class="tiny muted" style="margin:0">${formatCPF(c.cpf)}${c.telefone ? " · " + esc(c.telefone) : ""} · ${c.pets.length} pet(s)${(c.tags && c.tags.length) ? " · 🏷️ " + c.tags.map(esc).join(", ") : ""}</p>
       </span>
       <span class="muted">${aberto ? "▲" : "▼"}</span>
     </button>`;
@@ -797,11 +830,117 @@ function clienteExpandivelHTML(c) {
       <button class="btn btn-outline btn-sm" data-action="vet-salvar-cliente" data-cpf="${c.cpf}">Salvar dados do cliente</button>
       ${c.enderecoPadrao ? `<p class="tiny muted" style="margin-top:.7rem">📍 Último endereço usado: ${esc(enderecoTexto(c.enderecoPadrao))}</p>` : ""}
       <hr class="hr" />
+      ${categoriasHTML(c)}
+      <hr class="hr" />
       ${petsPanelHTML({ pets: c.pets, editable: true, contexto: c.cpf })}
     </div>`;
   }
   html += `</div>`;
   return html;
+}
+
+function vetMensagensHTML() {
+  const tags = state.vetTags || [];
+  const templates = state.vetTemplates || [];
+  const clientes = state.vetClientes || [];
+  const hoje = todayISO();
+  const vacinaVencendoCpfs = new Set();
+  clientes.forEach((c) => {
+    (c.pets || []).forEach((p) => {
+      (p.vacinas || []).forEach((v) => {
+        if (!v.proximaDose) return;
+        const diff = Math.floor((new Date(v.proximaDose + "T00:00:00") - new Date(hoje + "T00:00:00")) / 86400000);
+        if (diff <= 30) vacinaVencendoCpfs.add(c.cpf);
+      });
+    });
+  });
+
+  return `
+  <p class="h2">Mensagens</p>
+
+  <div class="card">
+    <p style="font-weight:700;margin:0 0 .6rem">1. Escolha os destinatários</p>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.8rem">
+      ${vacinaVencendoCpfs.size > 0 ? `<button class="chip" data-action="msg-filtro-vacina">💉 Vacina vencendo (${vacinaVencendoCpfs.size})</button>` : ""}
+      ${tags.map((t) => `<button class="chip" data-action="msg-filtro-tag" data-tag="${esc(t)}">🏷️ ${esc(t)}</button>`).join("")}
+      <button class="chip" data-action="msg-marcar-todos">☑️ Marcar todos</button>
+      <button class="chip" data-action="msg-desmarcar-todos">☐ Limpar seleção</button>
+    </div>
+    <input class="input" id="msg-busca" placeholder="🔎 Buscar por nome ou CPF" style="margin-bottom:.8rem" />
+    ${clientes.length === 0 ? `<p class="small muted">Nenhum cliente cadastrado.</p>` : `
+    <div style="max-height:280px;overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px;padding:.2rem .8rem">
+      ${clientes.map((c) => `
+        <label class="list-item" data-msg-cpf="${c.cpf}" data-msg-nome="${esc(c.nome.toLowerCase())}" style="cursor:pointer">
+          <span style="display:flex;align-items:center;gap:.6rem;min-width:0">
+            <input type="checkbox" data-action="msg-toggle-cliente" data-cpf="${c.cpf}" ${state.msgSelecionados.has(c.cpf) ? "checked" : ""} />
+            <span style="min-width:0">
+              <span style="font-weight:700;font-size:.88rem;display:block">${esc(c.nome)}</span>
+              <span class="tiny muted" style="display:block">${c.email ? "✉️ " + esc(c.email) : ""}${c.email && c.telefone ? " · " : ""}${c.telefone ? "📱 " + esc(c.telefone) : ""}${!c.email && !c.telefone ? "sem contato cadastrado" : ""}${c.tags && c.tags.length ? " · 🏷️ " + c.tags.map(esc).join(", ") : ""}</span>
+            </span>
+          </span>
+        </label>`).join("")}
+    </div>`}
+    <p class="tiny muted" style="margin-top:.6rem">${state.msgSelecionados.size} cliente(s) selecionado(s)</p>
+  </div>
+
+  <div class="card">
+    <p style="font-weight:700;margin:0 0 .6rem">2. Escreva a mensagem</p>
+    <div class="field"><label class="label">Usar um modelo pré-programado (opcional)</label>
+      <select class="input" id="msg-template" data-action-change="msg-template">
+        <option value="">— Mensagem personalizada —</option>
+        ${templates.map((t) => `<option value="${t.id}">${esc(t.nome)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field"><label class="label">Texto da mensagem</label><textarea class="input" id="msg-texto" rows="4" placeholder="Escreva sua mensagem... você pode usar {cliente} e {clinica}"></textarea></div>
+    <p class="tiny muted">Variáveis disponíveis: <code>{cliente}</code> <code>{clinica}</code></p>
+  </div>
+
+  <div class="card">
+    <p style="font-weight:700;margin:0 0 .6rem">3. Canal de envio</p>
+    <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.8rem">
+      <label class="small"><input type="radio" name="msg-canal" value="email" data-action-change="msg-canal" ${state.msgCanal === "email" ? "checked" : ""} /> E-mail</label>
+      <label class="small"><input type="radio" name="msg-canal" value="whatsapp" data-action-change="msg-canal" ${state.msgCanal === "whatsapp" ? "checked" : ""} /> WhatsApp</label>
+      <label class="small"><input type="radio" name="msg-canal" value="ambos" data-action-change="msg-canal" ${state.msgCanal === "ambos" ? "checked" : ""} /> Ambos</label>
+    </div>
+    <p class="tiny muted" style="margin-bottom:.8rem">✉️ E-mails são enviados automaticamente (se o servidor tiver SMTP configurado). 📱 O WhatsApp não tem envio automático em massa — o sistema gera um link pronto por cliente, e você clica para enviar cada um.</p>
+    <div id="msg-err"></div>
+    <button class="btn btn-primary" data-action="msg-enviar">📨 Enviar mensagem</button>
+  </div>
+
+  ${state.msgResultado ? msgResultadoHTML() : ""}
+
+  <hr class="hr" />
+  <p class="h2">Modelos de mensagem</p>
+  <div class="card">
+    ${templates.length === 0 ? `<p class="small muted" style="margin-bottom:1rem">Nenhum modelo criado ainda.</p>` : `
+    <div style="margin-bottom:1rem">
+      ${templates.map((t) => `
+        <div class="list-item" style="align-items:flex-start">
+          <div style="min-width:0">
+            <p style="margin:0;font-weight:700">${esc(t.nome)}</p>
+            <p class="tiny muted" style="margin:.2rem 0 0;white-space:pre-wrap">${esc(t.texto)}</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" data-action="remover-template" data-id="${t.id}">🗑️</button>
+        </div>`).join("")}
+    </div>`}
+    <div class="field"><label class="label">Nome do modelo</label><input class="input" id="novo-template-nome" placeholder="ex: Lembrete de vacina" /></div>
+    <div class="field"><label class="label">Texto</label><textarea class="input" id="novo-template-texto" rows="3" placeholder="Use {cliente} e {clinica} se quiser"></textarea></div>
+    <button class="btn btn-outline btn-sm" data-action="criar-template">+ Salvar modelo</button>
+  </div>`;
+}
+
+function msgResultadoHTML() {
+  const r = state.msgResultado;
+  return `
+  <div class="card">
+    <p style="font-weight:700;margin:0 0 .6rem">✅ Resultado do envio</p>
+    <p class="small">✉️ E-mails enviados automaticamente: ${r.emailEnviados} · não enviados (sem e-mail ou sem SMTP configurado): ${r.emailFalhou}</p>
+    ${r.whatsapp && r.whatsapp.length > 0 ? `
+      <p class="small" style="margin-top:.7rem">📱 Clique para enviar no WhatsApp de cada cliente:</p>
+      <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">
+        ${r.whatsapp.map((w) => `<a href="${w.url}" target="_blank" rel="noopener" class="btn btn-wa btn-sm" style="justify-content:flex-start">📲 ${esc(w.nome)}</a>`).join("")}
+      </div>` : ""}
+  </div>`;
 }
 
 function vetCarteirasHTML() {
@@ -957,6 +1096,7 @@ async function performAction(action, el) {
         qs("reg-err").innerHTML = "";
         const senha = val("reg-senha"), confirma = val("reg-confirma");
         if (senha !== confirma) { qs("reg-err").innerHTML = `<p class="error-text">As senhas não coincidem.</p>`; return; }
+        if (!val("reg-email") && !onlyDigits(val("reg-telefone"))) { qs("reg-err").innerHTML = `<p class="error-text">Informe pelo menos um contato: e-mail ou telefone.</p>`; return; }
         try {
           const body = {
             nome: val("reg-nome"), cpf: val("reg-cpf"), telefone: val("reg-telefone"), email: val("reg-email"), senha,
@@ -1149,7 +1289,9 @@ async function performAction(action, el) {
         state.vetTab = el.dataset.tab;
         if (state.vetTab === "solicitacoes") await carregarVetSolicitacoes();
         else if (state.vetTab === "agenda") await carregarVetAgenda();
-        else if (state.vetTab === "clientes" || state.vetTab === "carteiras") await carregarVetClientes();
+        else if (state.vetTab === "clientes") await Promise.all([carregarVetClientes(), carregarVetTags()]);
+        else if (state.vetTab === "carteiras") await carregarVetClientes();
+        else if (state.vetTab === "mensagens") await Promise.all([carregarVetClientes(), carregarVetTags(), carregarVetTemplates()]);
         else if (state.vetTab === "painel") await carregarVetPainel();
         else if (state.vetTab === "config") await carregarVetConfig();
         render();
@@ -1190,6 +1332,7 @@ async function performAction(action, el) {
       case "toggle-novo-cliente": state.vetShowNovoCliente = !state.vetShowNovoCliente; render(); break;
       case "vet-criar-cliente": {
         qs("nc-err").innerHTML = "";
+        if (!val("nc-email") && !onlyDigits(val("nc-telefone"))) { qs("nc-err").innerHTML = `<p class="error-text">Informe pelo menos um contato: e-mail ou telefone.</p>`; return; }
         try {
           await api.post("/api/vet/clientes", {
             nome: val("nc-nome"), cpf: val("nc-cpf"), telefone: val("nc-telefone"), email: val("nc-email"), senha: val("nc-senha"),
@@ -1211,6 +1354,99 @@ async function performAction(action, el) {
         await api.patch(`/api/vet/clientes/${cpf}`, { nome: val(`cli-nome-${cpf}`), telefone: val(`cli-telefone-${cpf}`), email: val(`cli-email-${cpf}`) });
         await carregarVetClientes();
         showToast("Dados do cliente atualizados.");
+        render();
+        break;
+      }
+      case "adicionar-tag-cliente": {
+        const cpf = el.dataset.cpf;
+        const novaTag = val(`nova-tag-${cpf}`);
+        if (!novaTag) return;
+        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const tags = [...new Set([...(cliente.tags || []), novaTag])];
+        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await Promise.all([carregarVetClientes(), carregarVetTags()]);
+        render();
+        break;
+      }
+      case "sugestao-tag-cliente": {
+        const cpf = el.dataset.cpf, tag = el.dataset.tag;
+        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const tags = [...new Set([...(cliente.tags || []), tag])];
+        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await carregarVetClientes();
+        render();
+        break;
+      }
+      case "remover-tag-cliente": {
+        const cpf = el.dataset.cpf, tag = el.dataset.tag;
+        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const tags = (cliente.tags || []).filter((t) => t !== tag);
+        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await carregarVetClientes();
+        render();
+        break;
+      }
+
+      /* ---- mensagens em massa ---- */
+      case "msg-toggle-cliente": {
+        const cpf = el.dataset.cpf;
+        if (state.msgSelecionados.has(cpf)) state.msgSelecionados.delete(cpf);
+        else state.msgSelecionados.add(cpf);
+        render();
+        break;
+      }
+      case "msg-filtro-vacina": {
+        const hoje = todayISO();
+        state.vetClientes.forEach((c) => {
+          const temVacinaVencendo = (c.pets || []).some((p) => (p.vacinas || []).some((v) => {
+            if (!v.proximaDose) return false;
+            const diff = Math.floor((new Date(v.proximaDose + "T00:00:00") - new Date(hoje + "T00:00:00")) / 86400000);
+            return diff <= 30;
+          }));
+          if (temVacinaVencendo) state.msgSelecionados.add(c.cpf);
+        });
+        render();
+        break;
+      }
+      case "msg-filtro-tag": {
+        const tag = el.dataset.tag;
+        state.vetClientes.forEach((c) => { if ((c.tags || []).includes(tag)) state.msgSelecionados.add(c.cpf); });
+        render();
+        break;
+      }
+      case "msg-marcar-todos": {
+        state.vetClientes.forEach((c) => state.msgSelecionados.add(c.cpf));
+        render();
+        break;
+      }
+      case "msg-desmarcar-todos": {
+        state.msgSelecionados.clear();
+        render();
+        break;
+      }
+      case "msg-enviar": {
+        qs("msg-err").innerHTML = "";
+        const texto = val("msg-texto");
+        if (state.msgSelecionados.size === 0) { qs("msg-err").innerHTML = `<p class="error-text">Selecione ao menos um cliente.</p>`; return; }
+        if (!texto) { qs("msg-err").innerHTML = `<p class="error-text">Escreva a mensagem.</p>`; return; }
+        try {
+          state.msgResultado = await api.post("/api/vet/mensagens/enviar", { cpfs: [...state.msgSelecionados], mensagem: texto, canal: state.msgCanal });
+          render();
+        } catch (e) { qs("msg-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
+        break;
+      }
+      case "criar-template": {
+        const nome = val("novo-template-nome"), texto = val("novo-template-texto");
+        if (!nome || !texto) { showToast("Preencha o nome e o texto do modelo.", true); return; }
+        await api.post("/api/vet/templates-mensagem", { nome, texto });
+        await carregarVetTemplates();
+        showToast("Modelo salvo.");
+        render();
+        break;
+      }
+      case "remover-template": {
+        await api.del(`/api/vet/templates-mensagem/${el.dataset.id}`);
+        await carregarVetTemplates();
         render();
         break;
       }
@@ -1323,6 +1559,7 @@ function bindDelegatedEvents() {
       try { el.setSelectionRange(pos + diff, pos + diff); } catch {}
     }
     if (el.id === "busca-cliente") { state.vetBusca = el.value; filtrarListaClientesInline(el.value); }
+    if (el.id === "msg-busca") { filtrarMsgLista(el.value); }
     if (el.id === "ag-pet") {
       const novoWrap = qs("ag-pet-novo-wrap");
       if (novoWrap) novoWrap.style.display = el.value === "novo" ? "" : "none";
@@ -1345,6 +1582,13 @@ function bindDelegatedEvents() {
     if (el.dataset && el.dataset.actionChange === "filtro-agenda") { state.vetAgendaFiltro = el.value; carregarVetAgenda().then(render); return; }
     if (el.dataset && el.dataset.actionChange === "carteira-cliente") { state.vetCarteiraCpf = el.value; state.vetCarteiraPetId = null; render(); return; }
     if (el.dataset && el.dataset.actionChange === "carteira-pet") { state.vetCarteiraPetId = el.value; render(); return; }
+    if (el.dataset && el.dataset.actionChange === "msg-template") {
+      const t = (state.vetTemplates || []).find((x) => x.id === el.value);
+      const textarea = qs("msg-texto");
+      if (textarea) textarea.value = t ? t.texto : "";
+      return;
+    }
+    if (el.dataset && el.dataset.actionChange === "msg-canal") { state.msgCanal = el.value; return; }
   });
 }
 
@@ -1357,6 +1601,17 @@ function filtrarListaClientesInline(termoBruto) {
     const cpf = card.dataset.clienteCpf || "";
     const match = nome.includes(termo) || (digits.length > 0 && cpf.includes(digits));
     card.style.display = match ? "" : "none";
+  });
+}
+
+function filtrarMsgLista(termoBruto) {
+  const termo = termoBruto.toLowerCase();
+  const digits = onlyDigits(termoBruto);
+  document.querySelectorAll("[data-msg-cpf]").forEach((row) => {
+    const nome = row.dataset.msgNome || "";
+    const cpf = row.dataset.msgCpf || "";
+    const match = nome.includes(termo) || (digits.length > 0 && cpf.includes(digits));
+    row.style.display = match ? "" : "none";
   });
 }
 

@@ -12,7 +12,8 @@ ou um servidor próprio.
 ## O que o sistema já faz
 
 - Login de cliente por CPF/senha (com cadastro próprio) e área restrita da veterinária
-  com senha separada.
+  com senha separada. No cadastro, é obrigatório informar pelo menos um contato
+  (e-mail ou telefone) — necessário para receber confirmações e mensagens.
 - Agendamento por proposta: o cliente sugere até 3 opções de dia/horário, endereço
   (com busca automática por CEP) e pode anexar uma foto ou vídeo do que está
   acontecendo com o pet.
@@ -33,6 +34,23 @@ ou um servidor próprio.
 - Identidade visual configurável (nome, slogan e logo) e os textos das mensagens
   automáticas de confirmação/recusa são editáveis pela própria veterinária, na aba
   "Config." do painel.
+- Categorias/tags por cliente (criadas na hora, direto na ficha) e uma aba
+  "Mensagens" para disparo em massa por e-mail e/ou WhatsApp — com filtro rápido por
+  categoria ou por "vacina vencendo", modelos de mensagem reutilizáveis, e a
+  possibilidade de mandar para um único cliente fora de qualquer lista.
+
+## Mensagens em massa
+
+Na aba "Mensagens" do painel da veterinária, dá para escolher clientes (por categoria,
+por "vacina vencendo" ou manualmente, um por um) e enviar uma mensagem — digitada na
+hora ou a partir de um modelo salvo.
+
+- **E-mail**: enviado automaticamente para quem tiver e-mail cadastrado, desde que o
+  SMTP esteja configurado no `.env`.
+- **WhatsApp**: não existe envio automático em massa sem contratar a API paga do
+  WhatsApp Business. Por isso, o sistema gera um link "clique para enviar" para cada
+  cliente selecionado que tenha telefone cadastrado, e a veterinária clica em cada um
+  para confirmar e disparar manualmente pelo próprio WhatsApp.
 
 ## Como funciona o agendamento
 

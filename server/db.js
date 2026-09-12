@@ -6,10 +6,11 @@ const DB_FILE = path.join(DATA_DIR, "db.json");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 
 const DEFAULT_DATA = {
-  clientes: {}, // cpf -> { cpf, nome, telefone, email, senhaHash, enderecoPadrao, criadoEm }
+  clientes: {}, // cpf -> { cpf, nome, telefone, email, senhaHash, enderecoPadrao, tags, criadoEm }
   pets: {}, // id -> { id, clienteCpf, nome, especie, raca, idade, obs, fotoPath, carteiraFotoPath, notasPrivadas }
   vacinas: {}, // id -> { id, petId, nome, data, proximaDose, lote }
   agendamentos: {}, // id -> { id, clienteCpf, clienteNome, petId, petNome, motivo, endereco, midiaPath, midiaTipo, anexosVet, opcoes, status, data, horario, observacoesVet, criadoEm }
+  templatesMensagem: {}, // id -> { id, nome, texto }
   config: {
     vetSenhaHash: null,
     clinicaNome: "Atendimento Veterinário em Domicílio",
