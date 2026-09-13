@@ -1,15 +1,16 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 
 const DEFAULT_DATA = {
-  clientes: {}, // cpf -> { cpf, nome, telefone, email, senhaHash, enderecoPadrao, tags, criadoEm }
-  pets: {}, // id -> { id, clienteCpf, nome, especie, raca, idade, obs, fotoPath, carteiraFotoPath, notasPrivadas }
+  clientes: {}, // id (uuid) -> { id, cpf, email, telefone, nome, senhaHash, enderecoPadrao, tags, criadoEm } — cpf e email são opcionais, mas ao menos um deve existir
+  pets: {}, // id -> { id, clienteId, nome, especie, raca, idade, obs, fotoPath, carteiraFotoPath, notasPrivadas }
   vacinas: {}, // id -> { id, petId, nome, data, proximaDose, lote }
-  agendamentos: {}, // id -> { id, clienteCpf, clienteNome, petId, petNome, motivo, endereco, midiaPath, midiaTipo, anexosVet, opcoes, status, data, horario, observacoesVet, criadoEm }
+  agendamentos: {}, // id -> { id, clienteId, clienteNome, petId, petNome, motivo, endereco, midiaPath, midiaTipo, anexosVet, opcoes, status, data, horario, historicoObservacoes, criadoEm }
   templatesMensagem: {}, // id -> { id, nome, texto }
   config: {
     vetSenhaHash: null,
@@ -24,6 +25,45 @@ const DEFAULT_DATA = {
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// Migra bancos antigos: clientes passam a ser identificados por um id interno
+// (em vez do CPF, que agora é opcional) e as observações da consulta viram um
+// histórico de entradas em vez de um texto único que se sobrescrevia.
+function migrar(cache) {
+  const precisaMigrarClientes = Object.values(cache.clientes).some((c) => !c.id);
+  if (precisaMigrarClientes) {
+    const antigos = cache.clientes;
+    const novos = {};
+    const cpfParaId = {};
+    Object.entries(antigos).forEach(([chaveAntiga, cliente]) => {
+      const id = cliente.id || crypto.randomUUID();
+      cliente.id = id;
+      novos[id] = cliente;
+      cpfParaId[chaveAntiga] = id;
+    });
+    cache.clientes = novos;
+
+    Object.values(cache.pets).forEach((pet) => {
+      if (!pet.clienteId && pet.clienteCpf) pet.clienteId = cpfParaId[pet.clienteCpf] || null;
+    });
+    Object.values(cache.agendamentos).forEach((ag) => {
+      if (!ag.clienteId && ag.clienteCpf) ag.clienteId = cpfParaId[ag.clienteCpf] || null;
+    });
+  }
+
+  Object.values(cache.agendamentos).forEach((ag) => {
+    if (!Array.isArray(ag.historicoObservacoes)) {
+      ag.historicoObservacoes = ag.observacoesVet
+        ? [{ id: crypto.randomUUID(), texto: ag.observacoesVet, criadoEm: ag.criadoEm || new Date().toISOString() }]
+        : [];
+    }
+    if (!Array.isArray(ag.anexosVet)) ag.anexosVet = [];
+  });
+  Object.values(cache.clientes).forEach((c) => { if (!Array.isArray(c.tags)) c.tags = []; });
+  Object.values(cache.pets).forEach((p) => { if (p.notasPrivadas === undefined) p.notasPrivadas = ""; });
+
+  return cache;
 }
 
 let cache = null;
@@ -44,6 +84,8 @@ function load() {
   // preenche chaves que possam faltar (ex: depois de um upgrade do sistema)
   cache = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...cache };
   cache.config = { ...DEFAULT_DATA.config, ...(cache.config || {}) };
+  cache = migrar(cache);
+  persist(); // garante que uma eventual migração de dados antigos seja salva em disco
   return cache;
 }
 

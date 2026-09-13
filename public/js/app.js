@@ -25,7 +25,7 @@ const state = {
   vetBusca: "",
   vetExpandidoCliente: null,
   vetShowNovoCliente: false,
-  vetCarteiraCpf: null,
+  vetCarteiraId: null,
   vetCarteiraPetId: null,
   vetAddVacinaAberto: null,
   vetAddPetPara: null,
@@ -66,6 +66,11 @@ function formatDateBR(iso) {
   if (!iso) return "";
   try { return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }); }
   catch { return iso; }
+}
+function formatDateHoraBR(isoDateTime) {
+  if (!isoDateTime) return "";
+  try { return new Date(isoDateTime).toLocaleString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+  catch { return isoDateTime; }
 }
 function enderecoTexto(end) {
   if (!end) return "";
@@ -221,7 +226,7 @@ function viewLanding() {
       <div class="landing-card" data-action="ir" data-view="clienteLogin">
         <div class="ic-lg" style="background:var(--green)">🐾</div>
         <p class="serif" style="font-size:1.2rem;margin:0 0 .3rem">Sou cliente</p>
-        <p class="small muted">Entre com CPF e senha para agendar visitas, ver o histórico e a carteirinha de vacinação.</p>
+        <p class="small muted">Entre com CPF ou e-mail e senha para agendar visitas, ver o histórico e a carteirinha de vacinação.</p>
         <span class="link" style="margin-top:.8rem;display:inline-block;pointer-events:none">Entrar ou cadastrar →</span>
       </div>
       <div class="landing-card" data-action="ir" data-view="vetLogin">
@@ -243,7 +248,7 @@ function viewClienteLogin() {
       <div class="ic-lg" style="background:var(--green)">🐾</div>
       <p class="serif" style="font-size:1.4rem;margin:.6rem 0 .2rem">Entrar</p>
       <p class="small muted" style="margin-bottom:1.2rem">Acesse sua ficha e agende novas visitas.</p>
-      <div class="field"><label class="label">CPF</label><input class="input" id="login-cpf" data-mask="cpf" inputmode="numeric" placeholder="000.000.000-00" /></div>
+      <div class="field"><label class="label">CPF ou e-mail</label><input class="input" id="login-identificador" placeholder="CPF ou e-mail cadastrado" /></div>
       <div class="field"><label class="label">Senha</label><input class="input" id="login-senha" type="password" placeholder="••••••••" /></div>
       <div id="login-err"></div>
       <button class="btn btn-primary btn-block" style="margin-top:.9rem" data-action="cliente-login">🔒 Entrar</button>
@@ -262,10 +267,10 @@ function viewClienteRegistro() {
       <div class="field"><label class="label">Nome completo</label><input class="input" id="reg-nome" /></div>
       <div class="row2">
         <div class="field"><label class="label">CPF</label><input class="input" id="reg-cpf" data-mask="cpf" inputmode="numeric" placeholder="000.000.000-00" /></div>
-        <div class="field"><label class="label">Telefone (WhatsApp)</label><input class="input" id="reg-telefone" data-mask="phone" inputmode="numeric" placeholder="(00) 00000-0000" /></div>
+        <div class="field"><label class="label">E-mail</label><input class="input" id="reg-email" type="email" placeholder="voce@email.com" /></div>
       </div>
-      <div class="field"><label class="label">E-mail</label><input class="input" id="reg-email" type="email" placeholder="voce@email.com" /></div>
-      <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um contato: telefone ou e-mail.</p>
+      <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um: CPF ou e-mail (o que você preferir informar).</p>
+      <div class="field"><label class="label">Telefone (WhatsApp, opcional)</label><input class="input" id="reg-telefone" data-mask="phone" inputmode="numeric" placeholder="(00) 00000-0000" /></div>
       <div class="row2">
         <div class="field"><label class="label">Senha</label><input class="input" id="reg-senha" type="password" /></div>
         <div class="field"><label class="label">Confirmar senha</label><input class="input" id="reg-confirma" type="password" /></div>
@@ -548,7 +553,7 @@ function meusAgendamentosHTML() {
       <p class="small muted" style="margin:.2rem 0">${esc(a.motivo)}</p>
       ${a.endereco ? `<p class="tiny muted" style="margin:.2rem 0">📍 ${esc(enderecoTexto(a.endereco))}</p>` : ""}
       ${a.midiaPath ? `<div style="margin:.5rem 0">${a.midiaTipo === "video" ? `<video src="${a.midiaPath}" controls class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:220px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="video"></video>` : `<img src="${a.midiaPath}" class="thumb-square clickable-photo" style="width:100%;height:auto;max-width:220px" data-action="ver-midia" data-src="${a.midiaPath}" data-tipo="imagem" />`}</div>` : ""}
-      ${a.observacoesVet && a.status !== "recusado" ? `<p class="small" style="margin:.4rem 0 0;color:var(--green-dark)">Obs. da veterinária: ${esc(a.observacoesVet)}</p>` : ""}
+      ${historicoObsHTML(a, false)}
       ${a.status === "confirmado" ? `<div style="margin-top:.6rem">${calendarButtonHTML(a)}</div>` : ""}
       ${anexosHTML(a, false)}
       ${["aguardando", "confirmado"].includes(a.status) ? `<button class="btn btn-danger btn-sm" style="margin-top:.7rem" data-action="cliente-cancelar" data-id="${a.id}">✕ Cancelar</button>` : ""}
@@ -562,7 +567,7 @@ function historicoHTML() {
     <div class="card">
       <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem"><p style="margin:0;font-weight:700">${esc(a.petNome)}</p>${badge(a.status)}</div>
       <p class="small muted" style="margin:.2rem 0">${formatDateBR(a.data)} · ${esc(a.motivo)}</p>
-      ${a.observacoesVet ? `<p class="small" style="margin-top:.5rem;background:var(--bg);border-radius:8px;padding:.6rem">${esc(a.observacoesVet)}</p>` : ""}
+      ${historicoObsHTML(a, false)}
       ${anexosHTML(a, false)}
     </div>`).join("");
 }
@@ -687,6 +692,29 @@ function vetSolicitacoesHTML() {
     </div>`).join("")}`;
 }
 
+function historicoObsHTML(ag, editavel) {
+  const entradas = ag.historicoObservacoes || [];
+  if (entradas.length === 0 && !editavel) return "";
+  let html = `<div style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line-soft)">`;
+  html += `<p class="label" style="margin-bottom:.5rem">📝 Histórico da consulta</p>`;
+  if (entradas.length === 0) {
+    html += `<p class="tiny muted" style="margin-bottom:.5rem">Nenhuma observação registrada ainda.</p>`;
+  } else {
+    entradas.forEach((e) => {
+      html += `<div style="background:var(--bg);border-radius:8px;padding:.6rem;margin-bottom:.5rem">
+        <p class="tiny muted" style="margin:0 0 .2rem">${formatDateHoraBR(e.criadoEm)}</p>
+        <p class="small" style="margin:0;white-space:pre-wrap">${esc(e.texto)}</p>
+      </div>`;
+    });
+  }
+  if (editavel) {
+    html += `<textarea class="input" id="nova-obs-${ag.id}" rows="2" placeholder="Adicionar uma nova observação ao histórico desta consulta..."></textarea>
+    <button class="btn btn-outline btn-sm" style="margin-top:.5rem" data-action="adicionar-observacao" data-id="${ag.id}">+ Adicionar ao histórico</button>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function anexosHTML(ag, editable) {
   const anexos = ag.anexosVet || [];
   if (!editable && anexos.length === 0) return "";
@@ -743,20 +771,25 @@ function vetAgendaHTML() {
             <button class="btn btn-danger btn-sm" data-action="vet-cancelar" data-id="${a.id}">✕ Cancelar</button>
           </div>
         </div>` : ""}
-      ${a.status === "concluido" && a.observacoesVet ? `<p class="small" style="margin-top:.6rem;background:var(--bg);border-radius:8px;padding:.6rem">${esc(a.observacoesVet)}</p>` : ""}
+      ${["confirmado", "concluido"].includes(a.status) ? historicoObsHTML(a, a.status === "concluido") : ""}
       ${["confirmado", "concluido"].includes(a.status) ? anexosHTML(a, true) : ""}
     </div>`).join("")}`;
 }
 
 function vetClientesHTML() {
   const termo = state.vetBusca.toLowerCase();
-  const lista = state.vetClientes.filter((c) => c.nome.toLowerCase().includes(termo) || c.cpf.includes(onlyDigits(state.vetBusca)));
+  const digits = onlyDigits(state.vetBusca);
+  const lista = state.vetClientes.filter((c) =>
+    c.nome.toLowerCase().includes(termo) ||
+    (digits && c.cpf && c.cpf.includes(digits)) ||
+    (c.email && c.email.toLowerCase().includes(termo))
+  );
   return `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
     <p class="h2" style="margin:0">Clientes</p>
     <button class="btn btn-outline btn-sm" data-action="toggle-novo-cliente">+ Novo cliente</button>
   </div>
-  <div class="field"><input class="input" id="busca-cliente" placeholder="🔎 Buscar por nome ou CPF" value="${esc(state.vetBusca)}" /></div>
+  <div class="field"><input class="input" id="busca-cliente" placeholder="🔎 Buscar por nome, CPF ou e-mail" value="${esc(state.vetBusca)}" /></div>
   ${state.vetShowNovoCliente ? novoClienteFormHTML() : ""}
   ${lista.length === 0 ? `<div class="card center muted">Nenhum cliente encontrado.</div>` : lista.map((c) => clienteExpandivelHTML(c)).join("")}`;
 }
@@ -765,15 +798,13 @@ function novoClienteFormHTML() {
   return `
   <div class="card">
     <p style="font-weight:700;margin:0 0 .8rem">Cadastrar novo cliente</p>
+    <div class="field"><label class="label">Nome</label><input class="input" id="nc-nome" /></div>
     <div class="row2">
-      <div class="field"><label class="label">Nome</label><input class="input" id="nc-nome" /></div>
       <div class="field"><label class="label">CPF</label><input class="input" id="nc-cpf" data-mask="cpf" inputmode="numeric" /></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label class="label">Telefone</label><input class="input" id="nc-telefone" data-mask="phone" inputmode="numeric" /></div>
       <div class="field"><label class="label">E-mail</label><input class="input" id="nc-email" type="email" /></div>
     </div>
-    <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um contato: telefone ou e-mail.</p>
+    <p class="tiny muted" style="margin:-.6rem 0 .9rem">Preencha ao menos um: CPF ou e-mail.</p>
+    <div class="field"><label class="label">Telefone (opcional)</label><input class="input" id="nc-telefone" data-mask="phone" inputmode="numeric" /></div>
     <div class="field"><label class="label">Senha temporária</label><input class="input" id="nc-senha" /></div>
     <hr class="hr" />
     <p class="eyebrow">PET (opcional)</p>
@@ -797,24 +828,32 @@ function categoriasHTML(cliente) {
     <p class="label" style="margin-bottom:.5rem">🏷️ Categorias</p>
     <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem">
       ${tags.length === 0 ? `<p class="tiny muted">Nenhuma categoria ainda.</p>` : tags.map((t) => `
-        <span class="chip" style="display:inline-flex;align-items:center;gap:.35rem">${esc(t)}<button data-action="remover-tag-cliente" data-cpf="${cliente.cpf}" data-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;font-weight:800;padding:0;line-height:1">✕</button></span>`).join("")}
+        <span class="chip" style="display:inline-flex;align-items:center;gap:.35rem">${esc(t)}<button data-action="remover-tag-cliente" data-id="${cliente.id}" data-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;font-weight:800;padding:0;line-height:1">✕</button></span>`).join("")}
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
-      <input class="input" id="nova-tag-${cliente.cpf}" placeholder="Nova categoria" style="max-width:220px" />
-      <button class="btn btn-outline btn-sm" data-action="adicionar-tag-cliente" data-cpf="${cliente.cpf}">+ Adicionar</button>
+      <input class="input" id="nova-tag-${cliente.id}" placeholder="Nova categoria" style="max-width:220px" />
+      <button class="btn btn-outline btn-sm" data-action="adicionar-tag-cliente" data-id="${cliente.id}">+ Adicionar</button>
     </div>
-    ${sugestoes.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:.4rem">${sugestoes.map((t) => `<button class="chip" data-action="sugestao-tag-cliente" data-cpf="${cliente.cpf}" data-tag="${esc(t)}">+ ${esc(t)}</button>`).join("")}</div>` : ""}
+    ${sugestoes.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:.4rem">${sugestoes.map((t) => `<button class="chip" data-action="sugestao-tag-cliente" data-id="${cliente.id}" data-tag="${esc(t)}">+ ${esc(t)}</button>`).join("")}</div>` : ""}
   </div>`;
 }
 
+function contatoResumoHTML(c) {
+  const partes = [];
+  if (c.cpf) partes.push(formatCPF(c.cpf));
+  if (c.email) partes.push(esc(c.email));
+  if (c.telefone) partes.push(esc(c.telefone));
+  return partes.join(" · ") || "sem CPF/e-mail cadastrado";
+}
+
 function clienteExpandivelHTML(c) {
-  const aberto = state.vetExpandidoCliente === c.cpf;
+  const aberto = state.vetExpandidoCliente === c.id;
   let html = `
-  <div class="card card-tight" data-cliente-cpf="${c.cpf}" data-cliente-nome="${esc(c.nome.toLowerCase())}">
-    <button data-action="toggle-cliente" data-cpf="${c.cpf}" style="width:100%;background:none;border:none;padding:0;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+  <div class="card card-tight" data-cliente-id="${c.id}" data-cliente-nome="${esc(c.nome.toLowerCase())}" data-cliente-cpf="${c.cpf || ""}" data-cliente-email="${esc((c.email || "").toLowerCase())}">
+    <button data-action="toggle-cliente" data-id="${c.id}" style="width:100%;background:none;border:none;padding:0;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
       <span>
         <p style="margin:0;font-weight:700">${esc(c.nome)}</p>
-        <p class="tiny muted" style="margin:0">${formatCPF(c.cpf)}${c.telefone ? " · " + esc(c.telefone) : ""} · ${c.pets.length} pet(s)${(c.tags && c.tags.length) ? " · 🏷️ " + c.tags.map(esc).join(", ") : ""}</p>
+        <p class="tiny muted" style="margin:0">${contatoResumoHTML(c)} · ${c.pets.length} pet(s)${(c.tags && c.tags.length) ? " · 🏷️ " + c.tags.map(esc).join(", ") : ""}</p>
       </span>
       <span class="muted">${aberto ? "▲" : "▼"}</span>
     </button>`;
@@ -822,17 +861,20 @@ function clienteExpandivelHTML(c) {
   if (aberto) {
     html += `
     <div style="margin-top:1rem">
+      <div class="field"><label class="label">Nome</label><input class="input" id="cli-nome-${c.id}" value="${esc(c.nome)}" /></div>
       <div class="row2">
-        <div class="field"><label class="label">Nome</label><input class="input" id="cli-nome-${c.cpf}" value="${esc(c.nome)}" /></div>
-        <div class="field"><label class="label">Telefone</label><input class="input" id="cli-telefone-${c.cpf}" data-mask="phone" value="${esc(c.telefone)}" /></div>
+        <div class="field"><label class="label">CPF</label><input class="input" id="cli-cpf-${c.id}" data-mask="cpf" inputmode="numeric" value="${esc(c.cpf ? formatCPF(c.cpf) : "")}" /></div>
+        <div class="field"><label class="label">E-mail</label><input class="input" id="cli-email-${c.id}" type="email" value="${esc(c.email || "")}" /></div>
       </div>
-      <div class="field"><label class="label">E-mail</label><input class="input" id="cli-email-${c.cpf}" type="email" value="${esc(c.email || "")}" /></div>
-      <button class="btn btn-outline btn-sm" data-action="vet-salvar-cliente" data-cpf="${c.cpf}">Salvar dados do cliente</button>
+      <div class="field"><label class="label">Telefone</label><input class="input" id="cli-telefone-${c.id}" data-mask="phone" value="${esc(c.telefone)}" /></div>
+      <p class="tiny muted" style="margin:-.4rem 0 .8rem">É preciso manter ao menos um: CPF ou e-mail.</p>
+      <div id="cli-err-${c.id}"></div>
+      <button class="btn btn-outline btn-sm" data-action="vet-salvar-cliente" data-id="${c.id}">Salvar dados do cliente</button>
       ${c.enderecoPadrao ? `<p class="tiny muted" style="margin-top:.7rem">📍 Último endereço usado: ${esc(enderecoTexto(c.enderecoPadrao))}</p>` : ""}
       <hr class="hr" />
       ${categoriasHTML(c)}
       <hr class="hr" />
-      ${petsPanelHTML({ pets: c.pets, editable: true, contexto: c.cpf })}
+      ${petsPanelHTML({ pets: c.pets, editable: true, contexto: c.id })}
     </div>`;
   }
   html += `</div>`;
@@ -844,13 +886,13 @@ function vetMensagensHTML() {
   const templates = state.vetTemplates || [];
   const clientes = state.vetClientes || [];
   const hoje = todayISO();
-  const vacinaVencendoCpfs = new Set();
+  const vacinaVencendoIds = new Set();
   clientes.forEach((c) => {
     (c.pets || []).forEach((p) => {
       (p.vacinas || []).forEach((v) => {
         if (!v.proximaDose) return;
         const diff = Math.floor((new Date(v.proximaDose + "T00:00:00") - new Date(hoje + "T00:00:00")) / 86400000);
-        if (diff <= 30) vacinaVencendoCpfs.add(c.cpf);
+        if (diff <= 30) vacinaVencendoIds.add(c.id);
       });
     });
   });
@@ -861,18 +903,18 @@ function vetMensagensHTML() {
   <div class="card">
     <p style="font-weight:700;margin:0 0 .6rem">1. Escolha os destinatários</p>
     <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.8rem">
-      ${vacinaVencendoCpfs.size > 0 ? `<button class="chip" data-action="msg-filtro-vacina">💉 Vacina vencendo (${vacinaVencendoCpfs.size})</button>` : ""}
+      ${vacinaVencendoIds.size > 0 ? `<button class="chip" data-action="msg-filtro-vacina">💉 Vacina vencendo (${vacinaVencendoIds.size})</button>` : ""}
       ${tags.map((t) => `<button class="chip" data-action="msg-filtro-tag" data-tag="${esc(t)}">🏷️ ${esc(t)}</button>`).join("")}
       <button class="chip" data-action="msg-marcar-todos">☑️ Marcar todos</button>
       <button class="chip" data-action="msg-desmarcar-todos">☐ Limpar seleção</button>
     </div>
-    <input class="input" id="msg-busca" placeholder="🔎 Buscar por nome ou CPF" style="margin-bottom:.8rem" />
+    <input class="input" id="msg-busca" placeholder="🔎 Buscar por nome, CPF ou e-mail" style="margin-bottom:.8rem" />
     ${clientes.length === 0 ? `<p class="small muted">Nenhum cliente cadastrado.</p>` : `
     <div style="max-height:280px;overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px;padding:.2rem .8rem">
       ${clientes.map((c) => `
-        <label class="list-item" data-msg-cpf="${c.cpf}" data-msg-nome="${esc(c.nome.toLowerCase())}" style="cursor:pointer">
+        <label class="list-item" data-msg-id="${c.id}" data-msg-nome="${esc(c.nome.toLowerCase())}" data-msg-cpf="${c.cpf || ""}" data-msg-email="${esc((c.email || "").toLowerCase())}" style="cursor:pointer">
           <span style="display:flex;align-items:center;gap:.6rem;min-width:0">
-            <input type="checkbox" data-action="msg-toggle-cliente" data-cpf="${c.cpf}" ${state.msgSelecionados.has(c.cpf) ? "checked" : ""} />
+            <input type="checkbox" data-action="msg-toggle-cliente" data-id="${c.id}" ${state.msgSelecionados.has(c.id) ? "checked" : ""} />
             <span style="min-width:0">
               <span style="font-weight:700;font-size:.88rem;display:block">${esc(c.nome)}</span>
               <span class="tiny muted" style="display:block">${c.email ? "✉️ " + esc(c.email) : ""}${c.email && c.telefone ? " · " : ""}${c.telefone ? "📱 " + esc(c.telefone) : ""}${!c.email && !c.telefone ? "sem contato cadastrado" : ""}${c.tags && c.tags.length ? " · 🏷️ " + c.tags.map(esc).join(", ") : ""}</span>
@@ -946,8 +988,8 @@ function msgResultadoHTML() {
 function vetCarteirasHTML() {
   const clientes = state.vetClientes;
   if (clientes.length === 0) return `<div class="card center muted">Cadastre um cliente para gerenciar carteiras de vacinação.</div>`;
-  const cpf = state.vetCarteiraCpf || clientes[0].cpf;
-  const cliente = clientes.find((c) => c.cpf === cpf) || clientes[0];
+  const idSel = state.vetCarteiraId || clientes[0].id;
+  const cliente = clientes.find((c) => c.id === idSel) || clientes[0];
   const petId = state.vetCarteiraPetId || cliente.pets[0]?.id || "";
   const pet = cliente.pets.find((p) => p.id === petId);
 
@@ -956,7 +998,7 @@ function vetCarteirasHTML() {
   <div class="row2" style="max-width:520px">
     <div class="field"><label class="label">Cliente</label>
       <select class="input" id="carteira-cliente" data-action-change="carteira-cliente">
-        ${clientes.map((c) => `<option value="${c.cpf}" ${c.cpf === cliente.cpf ? "selected" : ""}>${esc(c.nome)}</option>`).join("")}
+        ${clientes.map((c) => `<option value="${c.id}" ${c.id === cliente.id ? "selected" : ""}>${esc(c.nome)}</option>`).join("")}
       </select>
     </div>
     <div class="field"><label class="label">Pet</label>
@@ -1082,7 +1124,7 @@ async function performAction(action, el) {
       case "cliente-login": {
         qs("login-err").innerHTML = "";
         try {
-          const { token, cliente } = await api.post("/api/auth/login", { cpf: val("login-cpf"), senha: val("login-senha") });
+          const { token, cliente } = await api.post("/api/auth/login", { identificador: val("login-identificador"), senha: val("login-senha") });
           setSessao(token, "cliente");
           state.tipo = "cliente"; state.cliente = cliente;
           const me = await api.get("/api/auth/me"); state.pets = me.pets;
@@ -1096,7 +1138,7 @@ async function performAction(action, el) {
         qs("reg-err").innerHTML = "";
         const senha = val("reg-senha"), confirma = val("reg-confirma");
         if (senha !== confirma) { qs("reg-err").innerHTML = `<p class="error-text">As senhas não coincidem.</p>`; return; }
-        if (!val("reg-email") && !onlyDigits(val("reg-telefone"))) { qs("reg-err").innerHTML = `<p class="error-text">Informe pelo menos um contato: e-mail ou telefone.</p>`; return; }
+        if (!onlyDigits(val("reg-cpf")) && !val("reg-email")) { qs("reg-err").innerHTML = `<p class="error-text">Informe pelo menos um: CPF ou e-mail.</p>`; return; }
         try {
           const body = {
             nome: val("reg-nome"), cpf: val("reg-cpf"), telefone: val("reg-telefone"), email: val("reg-email"), senha,
@@ -1137,7 +1179,7 @@ async function performAction(action, el) {
         const suf = ctx || "cli";
         const body = { nome: val(`np-nome-${suf}`), especie: val(`np-especie-${suf}`), raca: val(`np-raca-${suf}`), idade: val(`np-idade-${suf}`), obs: val(`np-obs-${suf}`) };
         if (!body.nome) { showToast("Informe o nome do pet.", true); return; }
-        if (ctx) body.clienteCpf = ctx;
+        if (ctx) body.clienteId = ctx;
         await api.post("/api/pets", body);
         if (ctx) { await carregarVetClientes(); state.vetAddPetPara = null; }
         else { await recarregarCliente(); state.clienteMostrarAddPet = false; }
@@ -1323,6 +1365,15 @@ async function performAction(action, el) {
         render();
         break;
       }
+      case "adicionar-observacao": {
+        const id = el.dataset.id;
+        const texto = val(`nova-obs-${id}`);
+        if (!texto) { showToast("Escreva o texto da observação.", true); return; }
+        await api.post(`/api/agendamentos/${id}/observacoes`, { texto });
+        await carregarVetAgenda();
+        render();
+        break;
+      }
       case "vet-cancelar": {
         await api.post(`/api/agendamentos/${el.dataset.id}/cancelar`);
         await Promise.all([carregarVetAgenda(), carregarVetPainel()]);
@@ -1332,7 +1383,7 @@ async function performAction(action, el) {
       case "toggle-novo-cliente": state.vetShowNovoCliente = !state.vetShowNovoCliente; render(); break;
       case "vet-criar-cliente": {
         qs("nc-err").innerHTML = "";
-        if (!val("nc-email") && !onlyDigits(val("nc-telefone"))) { qs("nc-err").innerHTML = `<p class="error-text">Informe pelo menos um contato: e-mail ou telefone.</p>`; return; }
+        if (!onlyDigits(val("nc-cpf")) && !val("nc-email")) { qs("nc-err").innerHTML = `<p class="error-text">Informe pelo menos um: CPF ou e-mail.</p>`; return; }
         try {
           await api.post("/api/vet/clientes", {
             nome: val("nc-nome"), cpf: val("nc-cpf"), telefone: val("nc-telefone"), email: val("nc-email"), senha: val("nc-senha"),
@@ -1345,43 +1396,46 @@ async function performAction(action, el) {
         break;
       }
       case "toggle-cliente": {
-        state.vetExpandidoCliente = state.vetExpandidoCliente === el.dataset.cpf ? null : el.dataset.cpf;
+        state.vetExpandidoCliente = state.vetExpandidoCliente === el.dataset.id ? null : el.dataset.id;
         render();
         break;
       }
       case "vet-salvar-cliente": {
-        const cpf = el.dataset.cpf;
-        await api.patch(`/api/vet/clientes/${cpf}`, { nome: val(`cli-nome-${cpf}`), telefone: val(`cli-telefone-${cpf}`), email: val(`cli-email-${cpf}`) });
-        await carregarVetClientes();
-        showToast("Dados do cliente atualizados.");
-        render();
+        const id = el.dataset.id;
+        qs(`cli-err-${id}`).innerHTML = "";
+        try {
+          await api.patch(`/api/vet/clientes/${id}`, { nome: val(`cli-nome-${id}`), telefone: val(`cli-telefone-${id}`), email: val(`cli-email-${id}`), cpf: val(`cli-cpf-${id}`) });
+          await carregarVetClientes();
+          showToast("Dados do cliente atualizados.");
+          render();
+        } catch (e) { qs(`cli-err-${id}`).innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
         break;
       }
       case "adicionar-tag-cliente": {
-        const cpf = el.dataset.cpf;
-        const novaTag = val(`nova-tag-${cpf}`);
+        const id = el.dataset.id;
+        const novaTag = val(`nova-tag-${id}`);
         if (!novaTag) return;
-        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const cliente = state.vetClientes.find((c) => c.id === id);
         const tags = [...new Set([...(cliente.tags || []), novaTag])];
-        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await api.patch(`/api/vet/clientes/${id}`, { tags });
         await Promise.all([carregarVetClientes(), carregarVetTags()]);
         render();
         break;
       }
       case "sugestao-tag-cliente": {
-        const cpf = el.dataset.cpf, tag = el.dataset.tag;
-        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const id = el.dataset.id, tag = el.dataset.tag;
+        const cliente = state.vetClientes.find((c) => c.id === id);
         const tags = [...new Set([...(cliente.tags || []), tag])];
-        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await api.patch(`/api/vet/clientes/${id}`, { tags });
         await carregarVetClientes();
         render();
         break;
       }
       case "remover-tag-cliente": {
-        const cpf = el.dataset.cpf, tag = el.dataset.tag;
-        const cliente = state.vetClientes.find((c) => c.cpf === cpf);
+        const id = el.dataset.id, tag = el.dataset.tag;
+        const cliente = state.vetClientes.find((c) => c.id === id);
         const tags = (cliente.tags || []).filter((t) => t !== tag);
-        await api.patch(`/api/vet/clientes/${cpf}`, { tags });
+        await api.patch(`/api/vet/clientes/${id}`, { tags });
         await carregarVetClientes();
         render();
         break;
@@ -1389,9 +1443,9 @@ async function performAction(action, el) {
 
       /* ---- mensagens em massa ---- */
       case "msg-toggle-cliente": {
-        const cpf = el.dataset.cpf;
-        if (state.msgSelecionados.has(cpf)) state.msgSelecionados.delete(cpf);
-        else state.msgSelecionados.add(cpf);
+        const id = el.dataset.id;
+        if (state.msgSelecionados.has(id)) state.msgSelecionados.delete(id);
+        else state.msgSelecionados.add(id);
         render();
         break;
       }
@@ -1403,19 +1457,19 @@ async function performAction(action, el) {
             const diff = Math.floor((new Date(v.proximaDose + "T00:00:00") - new Date(hoje + "T00:00:00")) / 86400000);
             return diff <= 30;
           }));
-          if (temVacinaVencendo) state.msgSelecionados.add(c.cpf);
+          if (temVacinaVencendo) state.msgSelecionados.add(c.id);
         });
         render();
         break;
       }
       case "msg-filtro-tag": {
         const tag = el.dataset.tag;
-        state.vetClientes.forEach((c) => { if ((c.tags || []).includes(tag)) state.msgSelecionados.add(c.cpf); });
+        state.vetClientes.forEach((c) => { if ((c.tags || []).includes(tag)) state.msgSelecionados.add(c.id); });
         render();
         break;
       }
       case "msg-marcar-todos": {
-        state.vetClientes.forEach((c) => state.msgSelecionados.add(c.cpf));
+        state.vetClientes.forEach((c) => state.msgSelecionados.add(c.id));
         render();
         break;
       }
@@ -1430,7 +1484,7 @@ async function performAction(action, el) {
         if (state.msgSelecionados.size === 0) { qs("msg-err").innerHTML = `<p class="error-text">Selecione ao menos um cliente.</p>`; return; }
         if (!texto) { qs("msg-err").innerHTML = `<p class="error-text">Escreva a mensagem.</p>`; return; }
         try {
-          state.msgResultado = await api.post("/api/vet/mensagens/enviar", { cpfs: [...state.msgSelecionados], mensagem: texto, canal: state.msgCanal });
+          state.msgResultado = await api.post("/api/vet/mensagens/enviar", { clienteIds: [...state.msgSelecionados], mensagem: texto, canal: state.msgCanal });
           render();
         } catch (e) { qs("msg-err").innerHTML = `<p class="error-text">${esc(e.message)}</p>`; }
         break;
@@ -1580,7 +1634,7 @@ function bindDelegatedEvents() {
     }
     if (el.dataset && el.dataset.upload) { handleFileUpload(el); return; }
     if (el.dataset && el.dataset.actionChange === "filtro-agenda") { state.vetAgendaFiltro = el.value; carregarVetAgenda().then(render); return; }
-    if (el.dataset && el.dataset.actionChange === "carteira-cliente") { state.vetCarteiraCpf = el.value; state.vetCarteiraPetId = null; render(); return; }
+    if (el.dataset && el.dataset.actionChange === "carteira-cliente") { state.vetCarteiraId = el.value; state.vetCarteiraPetId = null; render(); return; }
     if (el.dataset && el.dataset.actionChange === "carteira-pet") { state.vetCarteiraPetId = el.value; render(); return; }
     if (el.dataset && el.dataset.actionChange === "msg-template") {
       const t = (state.vetTemplates || []).find((x) => x.id === el.value);
@@ -1596,10 +1650,11 @@ function bindDelegatedEvents() {
 function filtrarListaClientesInline(termoBruto) {
   const termo = termoBruto.toLowerCase();
   const digits = onlyDigits(termoBruto);
-  document.querySelectorAll("[data-cliente-cpf]").forEach((card) => {
+  document.querySelectorAll("[data-cliente-id]").forEach((card) => {
     const nome = card.dataset.clienteNome || "";
     const cpf = card.dataset.clienteCpf || "";
-    const match = nome.includes(termo) || (digits.length > 0 && cpf.includes(digits));
+    const email = card.dataset.clienteEmail || "";
+    const match = nome.includes(termo) || email.includes(termo) || (digits.length > 0 && cpf.includes(digits));
     card.style.display = match ? "" : "none";
   });
 }
@@ -1607,10 +1662,11 @@ function filtrarListaClientesInline(termoBruto) {
 function filtrarMsgLista(termoBruto) {
   const termo = termoBruto.toLowerCase();
   const digits = onlyDigits(termoBruto);
-  document.querySelectorAll("[data-msg-cpf]").forEach((row) => {
+  document.querySelectorAll("[data-msg-id]").forEach((row) => {
     const nome = row.dataset.msgNome || "";
     const cpf = row.dataset.msgCpf || "";
-    const match = nome.includes(termo) || (digits.length > 0 && cpf.includes(digits));
+    const email = row.dataset.msgEmail || "";
+    const match = nome.includes(termo) || email.includes(termo) || (digits.length > 0 && cpf.includes(digits));
     row.style.display = match ? "" : "none";
   });
 }

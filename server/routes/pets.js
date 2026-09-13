@@ -6,17 +6,17 @@ const upload = require("../upload");
 
 const router = express.Router();
 
-// Cliente cadastra um pet para si mesmo, ou a veterinária cadastra para um cliente (informando clienteCpf)
+// Cliente cadastra um pet para si mesmo, ou a veterinária cadastra para um cliente (informando clienteId)
 router.post("/", requireAuth(), async (req, res) => {
   const db = getDB();
-  const clienteCpf = req.auth.tipo === "cliente" ? req.auth.cpf : req.body.clienteCpf;
-  if (!clienteCpf || !db.clientes[clienteCpf]) return res.status(400).json({ erro: "Cliente inválido." });
+  const clienteId = req.auth.tipo === "cliente" ? req.auth.clienteId : req.body.clienteId;
+  if (!clienteId || !db.clientes[clienteId]) return res.status(400).json({ erro: "Cliente inválido." });
 
   const { nome, especie, raca, idade, obs } = req.body || {};
   if (!nome || !nome.trim()) return res.status(400).json({ erro: "Informe o nome do pet." });
 
   const id = crypto.randomUUID();
-  db.pets[id] = { id, clienteCpf, nome: nome.trim(), especie: especie || "Cão", raca: raca || "", idade: idade || "", obs: obs || "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
+  db.pets[id] = { id, clienteId, nome: nome.trim(), especie: especie || "Cão", raca: raca || "", idade: idade || "", obs: obs || "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
   await save();
   res.json({ ...db.pets[id], vacinas: [] });
 });

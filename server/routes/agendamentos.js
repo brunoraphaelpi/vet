@@ -19,7 +19,7 @@ function parseJSON(v, fallback) {
 }
 
 async function notificar(db, ag, template) {
-  const cliente = db.clientes[ag.clienteCpf];
+  const cliente = db.clientes[ag.clienteId];
   const nomeClinica = db.config.clinicaNome || "Atendimento Veterinário em Domicílio";
   const mensagem = aplicarTemplate(template, {
     cliente: cliente.nome,
@@ -37,7 +37,7 @@ async function notificar(db, ag, template) {
 // Cliente propõe até 3 opções de dia/horário para uma visita
 router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res) => {
   const db = getDB();
-  const cliente = db.clientes[req.auth.cpf];
+  const cliente = db.clientes[req.auth.clienteId];
   if (!cliente) return res.status(404).json({ erro: "Cliente não encontrado." });
 
   const petId = req.body.petId || null;
@@ -46,7 +46,7 @@ router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res
   const endereco = parseJSON(req.body.endereco, null);
   const opcoes = parseJSON(req.body.opcoes, []);
 
-  if (petId && (!db.pets[petId] || db.pets[petId].clienteCpf !== cliente.cpf)) return res.status(400).json({ erro: "Pet inválido." });
+  if (petId && (!db.pets[petId] || db.pets[petId].clienteId !== cliente.id)) return res.status(400).json({ erro: "Pet inválido." });
   if (!petNome) return res.status(400).json({ erro: "Informe o pet da visita." });
   if (!motivo) return res.status(400).json({ erro: "Descreva o motivo da visita." });
   if (!endereco || !endereco.rua || !endereco.numero || !endereco.cidade) return res.status(400).json({ erro: "Preencha o endereço completo (rua, número e cidade)." });
@@ -57,7 +57,7 @@ router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res
   const id = crypto.randomUUID();
   db.agendamentos[id] = {
     id,
-    clienteCpf: cliente.cpf,
+    clienteId: cliente.id,
     clienteNome: cliente.nome,
     petId,
     petNome,
@@ -70,7 +70,7 @@ router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res
     status: "aguardando", // aguardando -> confirmado -> concluido | recusado | cancelado
     data: null,
     horario: null,
-    observacoesVet: "",
+    historicoObservacoes: [],
     criadoEm: new Date().toISOString(),
   };
 
@@ -84,7 +84,7 @@ router.post("/", requireAuth("cliente"), upload.single("midia"), async (req, res
 router.get("/meus", requireAuth("cliente"), (req, res) => {
   const db = getDB();
   const lista = Object.values(db.agendamentos)
-    .filter((a) => a.clienteCpf === req.auth.cpf)
+    .filter((a) => a.clienteId === req.auth.clienteId)
     .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
   res.json(lista);
 });
@@ -93,9 +93,26 @@ router.post("/:id/cancelar", requireAuth(), async (req, res) => {
   const db = getDB();
   const ag = db.agendamentos[req.params.id];
   if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
-  if (req.auth.tipo === "cliente" && ag.clienteCpf !== req.auth.cpf) return res.status(403).json({ erro: "Acesso não permitido." });
+  if (req.auth.tipo === "cliente" && ag.clienteId !== req.auth.clienteId) return res.status(403).json({ erro: "Acesso não permitido." });
   if (!["aguardando", "confirmado"].includes(ag.status)) return res.status(400).json({ erro: "Esse agendamento não pode mais ser cancelado." });
   ag.status = "cancelado";
+  await save();
+  res.json(ag);
+});
+
+/* ---- histórico de observações da consulta (registro que nunca se perde) ---- */
+// O cliente pode ver esse histórico (fica junto do agendamento retornado a ele);
+// só a veterinária pode adicionar novas entradas, e entradas antigas nunca são
+// apagadas ou sobrescritas — cada chamada acrescenta uma nova linha ao histórico.
+
+router.post("/:id/observacoes", requireAuth("vet"), async (req, res) => {
+  const db = getDB();
+  const ag = db.agendamentos[req.params.id];
+  if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
+  const texto = (req.body.texto || "").trim();
+  if (!texto) return res.status(400).json({ erro: "Escreva o texto da observação." });
+  ag.historicoObservacoes = ag.historicoObservacoes || [];
+  ag.historicoObservacoes.push({ id: crypto.randomUUID(), texto, criadoEm: new Date().toISOString() });
   await save();
   res.json(ag);
 });
@@ -142,7 +159,7 @@ router.get("/vet/todos", requireAuth("vet"), (req, res) => {
   let lista = Object.values(db.agendamentos);
   if (status && status !== "todos") lista = lista.filter((a) => a.status === status);
   lista.sort(sortAgendamentos);
-  const comTelefone = lista.map((a) => ({ ...a, clienteTelefone: db.clientes[a.clienteCpf]?.telefone || "" }));
+  const comTelefone = lista.map((a) => ({ ...a, clienteTelefone: db.clientes[a.clienteId]?.telefone || "" }));
   res.json(comTelefone);
 });
 
@@ -171,7 +188,10 @@ router.post("/:id/recusar", requireAuth("vet"), async (req, res) => {
   if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
   if (ag.status !== "aguardando") return res.status(400).json({ erro: "Esse agendamento já foi respondido." });
   ag.status = "recusado";
-  if (req.body.motivo) ag.observacoesVet = req.body.motivo;
+  if (req.body.motivo) {
+    ag.historicoObservacoes = ag.historicoObservacoes || [];
+    ag.historicoObservacoes.push({ id: crypto.randomUUID(), texto: req.body.motivo, criadoEm: new Date().toISOString() });
+  }
   await save();
 
   const notificacao = await notificar(db, ag, db.config.mensagemRecusa);
@@ -184,7 +204,11 @@ router.post("/:id/concluir", requireAuth("vet"), async (req, res) => {
   if (!ag) return res.status(404).json({ erro: "Agendamento não encontrado." });
   if (ag.status !== "confirmado") return res.status(400).json({ erro: "Só é possível concluir visitas confirmadas." });
   ag.status = "concluido";
-  ag.observacoesVet = req.body.observacoes || "";
+  const texto = (req.body.observacoes || "").trim();
+  if (texto) {
+    ag.historicoObservacoes = ag.historicoObservacoes || [];
+    ag.historicoObservacoes.push({ id: crypto.randomUUID(), texto, criadoEm: new Date().toISOString() });
+  }
   await save();
   res.json(ag);
 });

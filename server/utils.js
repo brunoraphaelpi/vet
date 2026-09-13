@@ -38,4 +38,12 @@ function sortAgendamentos(a, b) {
   return (a.horario || "").localeCompare(b.horario || "");
 }
 
-module.exports = { onlyDigits, semSenha, formatarDataBR, enderecoTexto, sortAgendamentos, aplicarTemplate };
+// Encontra um cliente pelo CPF ou pelo e-mail (o cliente pode logar com qualquer um dos dois)
+function encontrarClientePorIdentificador(db, identificador) {
+  const bruto = (identificador || "").trim();
+  const digits = onlyDigits(bruto);
+  const emailLower = bruto.toLowerCase();
+  return Object.values(db.clientes).find((c) => (digits && c.cpf && c.cpf === digits) || (c.email && c.email.toLowerCase() === emailLower));
+}
+
+module.exports = { onlyDigits, semSenha, formatarDataBR, enderecoTexto, sortAgendamentos, aplicarTemplate, encontrarClientePorIdentificador };

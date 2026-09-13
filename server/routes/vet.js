@@ -12,15 +12,22 @@ const { onlyDigits, semSenha, sortAgendamentos, aplicarTemplate } = require("../
 
 const router = express.Router();
 
-function petsDoCliente(db, cpf) {
+function petsDoCliente(db, clienteId) {
   return Object.values(db.pets)
-    .filter((p) => p.clienteCpf === cpf)
+    .filter((p) => p.clienteId === clienteId)
     .map((p) => ({ ...p, vacinas: Object.values(db.vacinas).filter((v) => v.petId === p.id) }));
+}
+
+function cpfOuEmailJaExiste(db, digits, emailLower, ignorarId) {
+  return Object.values(db.clientes).some((c) => {
+    if (ignorarId && c.id === ignorarId) return false;
+    return (digits && c.cpf === digits) || (emailLower && c.email && c.email.toLowerCase() === emailLower);
+  });
 }
 
 router.get("/clientes", requireAuth("vet"), (req, res) => {
   const db = getDB();
-  const clientes = Object.values(db.clientes).map((c) => ({ ...semSenha(c), pets: petsDoCliente(db, c.cpf) }));
+  const clientes = Object.values(db.clientes).map((c) => ({ ...semSenha(c), pets: petsDoCliente(db, c.id) }));
   res.json(clientes);
 });
 
@@ -28,19 +35,22 @@ router.post("/clientes", requireAuth("vet"), async (req, res) => {
   const db = getDB();
   const { nome, cpf, telefone, email, senha, pet } = req.body || {};
   const digits = onlyDigits(cpf);
-  if (!nome || !nome.trim()) return res.status(400).json({ erro: "Informe o nome do cliente." });
-  if (digits.length !== 11) return res.status(400).json({ erro: "CPF inválido." });
-  if (db.clientes[digits]) return res.status(409).json({ erro: "Já existe um cliente com esse CPF." });
-  if (!senha || senha.length < 4) return res.status(400).json({ erro: "Defina uma senha temporária (mín. 4 caracteres)." });
-  if (!(email && email.trim()) && !(telefone && onlyDigits(telefone))) {
-    return res.status(400).json({ erro: "Informe pelo menos um contato: e-mail ou telefone." });
-  }
+  const emailLimpo = (email || "").trim();
+  const emailLower = emailLimpo.toLowerCase();
 
-  db.clientes[digits] = {
-    cpf: digits,
+  if (!nome || !nome.trim()) return res.status(400).json({ erro: "Informe o nome do cliente." });
+  if (cpf && digits.length !== 11) return res.status(400).json({ erro: "CPF inválido." });
+  if (!digits && !emailLimpo) return res.status(400).json({ erro: "Informe pelo menos um: CPF ou e-mail." });
+  if (!senha || senha.length < 4) return res.status(400).json({ erro: "Defina uma senha temporária (mín. 4 caracteres)." });
+  if (cpfOuEmailJaExiste(db, digits, emailLower)) return res.status(409).json({ erro: "Já existe um cliente com esse CPF ou e-mail." });
+
+  const id = crypto.randomUUID();
+  db.clientes[id] = {
+    id,
+    cpf: digits || "",
+    email: emailLimpo,
     nome: nome.trim(),
     telefone: telefone || "",
-    email: email || "",
     senhaHash: bcrypt.hashSync(senha, 10),
     enderecoPadrao: null,
     tags: [],
@@ -48,25 +58,35 @@ router.post("/clientes", requireAuth("vet"), async (req, res) => {
   };
 
   if (pet && pet.nome && pet.nome.trim()) {
-    const id = crypto.randomUUID();
-    db.pets[id] = { id, clienteCpf: digits, nome: pet.nome.trim(), especie: pet.especie || "Cão", raca: pet.raca || "", idade: pet.idade || "", obs: "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
+    const petId = crypto.randomUUID();
+    db.pets[petId] = { id: petId, clienteId: id, nome: pet.nome.trim(), especie: pet.especie || "Cão", raca: pet.raca || "", idade: pet.idade || "", obs: "", fotoPath: null, carteiraFotoPath: null, notasPrivadas: "" };
   }
 
   await save();
-  res.json({ ...semSenha(db.clientes[digits]), pets: petsDoCliente(db, digits) });
+  res.json({ ...semSenha(db.clientes[id]), pets: petsDoCliente(db, id) });
 });
 
-router.patch("/clientes/:cpf", requireAuth("vet"), async (req, res) => {
+router.patch("/clientes/:id", requireAuth("vet"), async (req, res) => {
   const db = getDB();
-  const cliente = db.clientes[req.params.cpf];
+  const cliente = db.clientes[req.params.id];
   if (!cliente) return res.status(404).json({ erro: "Cliente não encontrado." });
-  const { nome, telefone, email, tags } = req.body || {};
+  const { nome, telefone, email, cpf, tags } = req.body || {};
+
+  const novoDigits = cpf !== undefined ? onlyDigits(cpf) : cliente.cpf;
+  const novoEmail = email !== undefined ? (email || "").trim() : cliente.email;
+  if (cpf !== undefined && cpf && novoDigits.length !== 11) return res.status(400).json({ erro: "CPF inválido." });
+  if (!novoDigits && !novoEmail) return res.status(400).json({ erro: "O cliente precisa ter pelo menos um: CPF ou e-mail." });
+  if (cpfOuEmailJaExiste(db, novoDigits, novoEmail.toLowerCase(), cliente.id)) {
+    return res.status(409).json({ erro: "Já existe outro cliente com esse CPF ou e-mail." });
+  }
+
   if (nome !== undefined) cliente.nome = nome;
   if (telefone !== undefined) cliente.telefone = telefone;
-  if (email !== undefined) cliente.email = email;
+  if (email !== undefined) cliente.email = novoEmail;
+  if (cpf !== undefined) cliente.cpf = novoDigits;
   if (tags !== undefined) cliente.tags = Array.isArray(tags) ? [...new Set(tags.map((t) => String(t).trim()).filter(Boolean))] : cliente.tags;
   await save();
-  res.json({ ...semSenha(cliente), pets: petsDoCliente(db, cliente.cpf) });
+  res.json({ ...semSenha(cliente), pets: petsDoCliente(db, cliente.id) });
 });
 
 router.get("/tags", requireAuth("vet"), (req, res) => {
@@ -138,7 +158,7 @@ router.get("/painel", requireAuth("vet"), (req, res) => {
 
   const vacinasVencendo = [];
   Object.values(db.pets).forEach((pet) => {
-    const cliente = db.clientes[pet.clienteCpf];
+    const cliente = db.clientes[pet.clienteId];
     if (!cliente) return;
     Object.values(db.vacinas)
       .filter((v) => v.petId === pet.id && v.proximaDose)
@@ -193,8 +213,8 @@ router.delete("/templates-mensagem/:id", requireAuth("vet"), async (req, res) =>
 
 router.post("/mensagens/enviar", requireAuth("vet"), async (req, res) => {
   const db = getDB();
-  const { cpfs, mensagem, canal } = req.body || {};
-  if (!Array.isArray(cpfs) || cpfs.length === 0) return res.status(400).json({ erro: "Selecione ao menos um cliente." });
+  const { clienteIds, mensagem, canal } = req.body || {};
+  if (!Array.isArray(clienteIds) || clienteIds.length === 0) return res.status(400).json({ erro: "Selecione ao menos um cliente." });
   if (!mensagem || !mensagem.trim()) return res.status(400).json({ erro: "Escreva a mensagem." });
   const canalValido = ["email", "whatsapp", "ambos"].includes(canal) ? canal : "ambos";
 
@@ -203,8 +223,8 @@ router.post("/mensagens/enviar", requireAuth("vet"), async (req, res) => {
   let emailFalhou = 0;
   const whatsapp = [];
 
-  for (const cpf of cpfs) {
-    const cliente = db.clientes[cpf];
+  for (const clienteId of clienteIds) {
+    const cliente = db.clientes[clienteId];
     if (!cliente) continue;
     const texto = aplicarTemplate(mensagem, { cliente: cliente.nome, clinica: nomeClinica });
 
@@ -216,7 +236,7 @@ router.post("/mensagens/enviar", requireAuth("vet"), async (req, res) => {
 
     if (canalValido === "whatsapp" || canalValido === "ambos") {
       const url = linkWhatsapp(cliente.telefone, texto);
-      if (url) whatsapp.push({ cpf, nome: cliente.nome, url });
+      if (url) whatsapp.push({ clienteId, nome: cliente.nome, url });
     }
   }
 

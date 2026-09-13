@@ -11,9 +11,11 @@ ou um servidor próprio.
 
 ## O que o sistema já faz
 
-- Login de cliente por CPF/senha (com cadastro próprio) e área restrita da veterinária
-  com senha separada. No cadastro, é obrigatório informar pelo menos um contato
-  (e-mail ou telefone) — necessário para receber confirmações e mensagens.
+- Login de cliente por CPF **ou** e-mail (o que o cliente preferir informar) + senha,
+  com cadastro próprio. No cadastro, é obrigatório informar pelo menos um dos dois —
+  muitos clientes preferem não passar o CPF, e com e-mail já é possível se cadastrar
+  e ser identificado no sistema. A veterinária pode completar o CPF depois, se o
+  cliente quiser informar em outro momento. A área da veterinária tem senha separada.
 - Agendamento por proposta: o cliente sugere até 3 opções de dia/horário, endereço
   (com busca automática por CEP) e pode anexar uma foto ou vídeo do que está
   acontecendo com o pet.
@@ -26,6 +28,9 @@ ou um servidor próprio.
   próprio pet.
 - Notas privadas por pet, visíveis só para a veterinária (o cliente nunca recebe
   esse campo, nem pela API).
+- Histórico de observações da consulta: cada anotação que a veterinária registra
+  fica guardada como uma entrada nova (com data e hora), nunca sobrescrevendo as
+  anteriores. O cliente vê esse histórico completo no próprio painel.
 - A veterinária pode anexar arquivos (receitas, exames etc.) a cada visita; o
   cliente só visualiza/baixa, não edita.
 - Fotos e vídeos podem ser clicados para ampliar ou abrir em outra aba.
@@ -121,6 +126,15 @@ pm2 startup            # deixa o sistema reiniciando sozinho se o servidor reini
 ```
 Depois, configure um proxy reverso (Nginx ou Caddy) apontando para a porta do Node,
 com certificado HTTPS (o Caddy faz isso automaticamente).
+
+## Atualizando de uma versão anterior
+
+Se você já vinha usando uma versão antiga deste sistema (onde o CPF era obrigatório
+e identificava o cliente diretamente), pode atualizar os arquivos tranquilamente: na
+primeira vez que o servidor novo roda, ele migra automaticamente os dados existentes
+— cada cliente ganha um identificador interno novo, e nada se perde (pets, agendamentos
+e observações continuam ligados ao cliente certo). Ainda assim, é sempre uma boa ideia
+copiar a pasta `data/` antes de atualizar, por precaução.
 
 ## Backup
 
